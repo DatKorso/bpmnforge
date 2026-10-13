@@ -1,0 +1,20 @@
+{
+  "name": "bplm",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Offline process JSON to HTML and BPMN generator",
+  "engines": { "node": ">=24" },
+  "bin": { "bplm": "bin/bplm.mjs" },
+  "files": ["bin", "src", "schema", "assets", "README.md"],
+  "scripts": {
+    "build": "node scripts/bundle.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && node --test tests/tracer.test.ts tests/validation.test.ts tests/build.test.ts",
+    "test:tracer": "node --test tests/tracer.test.ts",
+    "test:validation": "node --test tests/validation.test.ts",
+    "test:e2e": "node --test tests/phase1.e2e.test.ts",
+    "prepack": "npm run build"
+  },
+  "dependencies": { "ajv": "8.20.0", "bpmn-moddle": "10.3.1", "bpmn-js": "18.31.0" },
+  "devDependencies": { "typescript": "7.0.2", "esbuild": "0.28.2", "@playwright/test": "1.64.0", "@types/node": "26.6.5" }
+}
