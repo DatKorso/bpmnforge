@@ -35,6 +35,86 @@ function showStage(id: string) {
 function adjustZoom(factor: number, center?: { x: number; y: number }) {
   canvas.zoom(Math.max(0.2, Math.min(3, canvas.zoom() * factor)), center); updateZoom();
 }
+const registry: any = viewer.get('elementRegistry');
+const details = document.getElementById('details')!;
+const nodeById = new Map<string, any>(data.model.nodes.map((node: any) => [node.id, node]));
+const named = new Map<string, any>([...data.model.processes, ...data.model.pools, ...data.model.lanes, ...data.model.nodes, ...(data.model.annotations ?? [])].map((item: any) => [item.id, item]));
+const types: Record<string, string> = { start: 'Начало', end: 'Завершение', task: 'Задача', xor: 'Развилка: один исход', and: 'Параллельные ветви' };
+let selectedId: string | null = null;
+function addText(parent: Element, tag: string, value: string, className?: string): Element {
+  const element = document.createElement(tag); element.textContent = value;
+  if (className) element.className = className;
+  parent.append(element); return element;
+}
+function flowName(flow: any): string {
+  const source = nodeById.get(flow.source);
+  const outcome = source?.defaultFlow === flow.id ? 'По умолчанию' : flow.condition ? `Условие: ${flow.condition}` : '';
+  return [flow.name || flow.id, outcome, flow.return ? 'Возврат' : ''].filter(Boolean).join(' — ');
+}
+function reveal(id: string) {
+  const box = data.geometry.shapes[id]; if (!box) return;
+  const view = canvas.viewbox();
+  if (box.x < view.x + 30 || box.x + box.width > view.x + view.width - 30 || box.y < view.y + 30 || box.y + box.height > view.y + view.height - 30) {
+    canvas.viewbox({ x: box.x + box.width / 2 - view.width / 2, y: box.y + box.height / 2 - view.height / 2, width: view.width, height: view.height });
+  }
+}
+function renderFlows(node: any, direction: 'incoming' | 'outgoing') {
+  addText(details, 'h3', direction === 'incoming' ? 'Входящие связи' : 'Исходящие связи');
+  const list = document.createElement('div'); list.className = 'neighbors'; details.append(list);
+  const flows = data.model.flows.filter((flow: any) => direction === 'incoming' ? flow.target === node.id : flow.source === node.id);
+  if (!flows.length) { addText(list, 'p', 'Нет связей'); return; }
+  for (const flow of flows) {
+    const otherId = direction === 'incoming' ? flow.source : flow.target;
+    const other = named.get(otherId); const row = document.createElement('p'); list.append(row);
+    const label = `${flowName(flow)}: ${other?.name ?? otherId}`;
+    if (nodeById.has(otherId)) {
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
+      button.setAttribute('aria-label', `${direction === 'incoming' ? 'Перейти к предыдущему' : 'Перейти к следующему'} блоку: ${label}`);
+      button.addEventListener('click', () => selectNode(otherId, true)); row.append(button);
+    } else addText(row, 'span', label);
+  }
+}
+function selectNode(id: string, focus = false) {
+  const node = nodeById.get(id); if (!node) return;
+  if (selectedId) {
+    canvas.removeMarker(selectedId, 'bplm-selected');
+    for (const flow of data.model.flows.filter((item: any) => item.source === selectedId || item.target === selectedId)) canvas.removeMarker(flow.id, 'bplm-related');
+  }
+  selectedId = id;
+  if (activeStage !== node.stage) showStage(node.stage);
+  reveal(id);
+  canvas.addMarker(id, 'bplm-selected');
+  for (const flow of data.model.flows.filter((item: any) => item.source === id || item.target === id)) canvas.addMarker(flow.id, 'bplm-related');
+  details.replaceChildren();
+  addText(details, 'h2', node.name);
+  addText(details, 'p', `Тип: ${types[node.type] ?? node.type}`);
+  addText(details, 'p', `Процесс: ${named.get(node.process)?.name ?? node.process}`);
+  const pool = data.model.pools.find((item: any) => item.process === node.process);
+  if (pool) addText(details, 'p', `Участник: ${pool.name}`);
+  if (node.lane) addText(details, 'p', `Исполнитель: ${named.get(node.lane)?.name ?? node.lane}`);
+  addText(details, 'p', `Этап: ${data.model.stages.find((item: any) => item.id === node.stage)?.name ?? node.stage}`);
+  addText(details, 'h3', 'Описание'); addText(details, 'p', node.description || 'Описание не задано');
+  renderFlows(node, 'incoming'); renderFlows(node, 'outgoing');
+  if (node.links?.length) {
+    addText(details, 'h3', 'Документы');
+    for (const link of node.links) { const row = document.createElement('p'); const a = document.createElement('a'); a.textContent = link.name; a.href = link.href; a.rel = 'noopener noreferrer'; row.append(a); details.append(row); }
+  }
+  status.textContent = `Выбран блок: ${node.name}`;
+  if (focus) registry.getGraphics(id)?.focus({ preventScroll: true });
+}
+function wireNodes() {
+  for (const node of data.model.nodes) {
+    const graphic: SVGElement | undefined = registry.getGraphics(node.id);
+    if (!graphic) continue;
+    graphic.setAttribute('tabindex', '0'); graphic.setAttribute('role', 'button');
+    graphic.setAttribute('aria-label', `${types[node.type] ?? node.type}: ${node.name}`);
+    graphic.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault(); event.stopPropagation(); selectNode(node.id, true);
+    });
+  }
+}
+eventBus.on('element.click', (event: any) => { if (nodeById.has(event.element?.id)) selectNode(event.element.id); });
 for (const stage of data.model.stages) {
   const button = document.createElement('button'); button.type = 'button'; button.textContent = stage.name;
   button.dataset.stage = stage.id; button.setAttribute('aria-pressed', 'false'); button.addEventListener('click', () => showStage(stage.id)); stages.append(button);
@@ -74,7 +154,7 @@ diagram.addEventListener('keydown', event => {
 
 viewer.importXML(data.xml).then(({ warnings }: any) => {
   if (warnings.length) throw new Error('BPMN import warnings');
-  showOverview(); document.body.dataset.ready = 'true'; status.textContent = 'Схема загружена';
+  wireNodes(); showOverview(); document.body.dataset.ready = 'true'; status.textContent = 'Схема загружена';
 }).catch(() => { document.body.dataset.error = 'true'; status.textContent = 'Не удалось открыть BPMN'; });
 const list = document.getElementById('documents')!;
 for (const item of [data.model, ...data.model.stages, ...data.model.processes, ...data.model.pools, ...data.model.lanes, ...data.model.nodes, ...(data.model.annotations ?? [])]) for (const link of item.links ?? []) {
