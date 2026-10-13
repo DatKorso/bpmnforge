@@ -32,6 +32,7 @@ export async function prepareProcess(options: BuildOptions) {
   try { text = await readFile(paths.sourcePath, 'utf8'); } catch { throw new BplmError(2, 'PATH: cannot read source'); }
   let data: unknown; try { data = JSON.parse(text); } catch { throw new BplmError(1, 'JSON: invalid source JSON'); }
   const { model, diagnostics } = await validateProcess(data, paths); const geometry = layoutProcess(model);
+  for (const crossing of geometry.crossings) diagnostics.push({ code: 'ACCEPTED_CROSSING', id: crossing.over, relatedIds: crossing.flows, point: crossing.point, message: `Right-angle crossing of ${crossing.flows.join(' and ')} accepted with a bridge`, severity: 'info' });
   return { ...paths, model, diagnostics, geometry };
 }
 export async function buildProcess(options: BuildOptions) {

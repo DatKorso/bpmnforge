@@ -114,6 +114,21 @@ function wireNodes() {
     });
   }
 }
+function renderBridges() {
+  if (!data.geometry.crossings?.length) return;
+  const layer: SVGGElement = canvas.getLayer('bplm-bridges', 1000);
+  const ns = 'http://www.w3.org/2000/svg';
+  for (const crossing of data.geometry.crossings) {
+    const route: { x: number; y: number }[] = data.geometry.edges[crossing.over];
+    const horizontal = route.slice(1).some((point, index) => route[index].y === point.y && point.y === crossing.point.y && Math.min(route[index].x, point.x) < crossing.point.x && crossing.point.x < Math.max(route[index].x, point.x));
+    const { x, y } = crossing.point;
+    const mask = document.createElementNS(ns, 'circle'); mask.setAttribute('cx', String(x)); mask.setAttribute('cy', String(y)); mask.setAttribute('r', '7'); mask.setAttribute('fill', '#fff'); mask.setAttribute('class', 'bplm-bridge-mask'); layer.append(mask);
+    const arc = document.createElementNS(ns, 'path');
+    arc.setAttribute('d', horizontal ? `M ${x - 8} ${y} C ${x - 5} ${y - 10}, ${x + 5} ${y - 10}, ${x + 8} ${y}` : `M ${x} ${y - 8} C ${x + 10} ${y - 5}, ${x + 10} ${y + 5}, ${x} ${y + 8}`);
+    arc.setAttribute('fill', 'none'); arc.setAttribute('stroke', '#1c679e'); arc.setAttribute('stroke-width', '2.5'); arc.setAttribute('class', 'bplm-bridge'); layer.append(arc);
+  }
+  layer.style.pointerEvents = 'none';
+}
 eventBus.on('element.click', (event: any) => { if (nodeById.has(event.element?.id)) selectNode(event.element.id); });
 for (const stage of data.model.stages) {
   const button = document.createElement('button'); button.type = 'button'; button.textContent = stage.name;
@@ -154,7 +169,7 @@ diagram.addEventListener('keydown', event => {
 
 viewer.importXML(data.xml).then(({ warnings }: any) => {
   if (warnings.length) throw new Error('BPMN import warnings');
-  wireNodes(); showOverview(); document.body.dataset.ready = 'true'; status.textContent = 'Схема загружена';
+  wireNodes(); renderBridges(); showOverview(); document.body.dataset.ready = 'true'; status.textContent = 'Схема загружена';
 }).catch(() => { document.body.dataset.error = 'true'; status.textContent = 'Не удалось открыть BPMN'; });
 const list = document.getElementById('documents')!;
 for (const item of [data.model, ...data.model.stages, ...data.model.processes, ...data.model.pools, ...data.model.lanes, ...data.model.nodes, ...(data.model.annotations ?? [])]) for (const link of item.links ?? []) {

@@ -11,8 +11,9 @@ export interface ProcessDocument extends Named {
   lanes: (Named & { process: string })[]; nodes: ProcessNode[]; flows: Flow[];
   annotations?: (Named & { process: string; text: string; stage: string; lane?: string; column?: number; row?: number })[];
 }
-export interface Geometry { shapes: Record<string, Bounds>; edges: Record<string, Point[]>; labels: Record<string, Bounds>; stages: Record<string, Bounds>; viewport: Bounds }
-export interface Diagnostic { code: string; id: string; message: string; severity: 'error' | 'warning' }
+export interface Crossing { flows: [string, string]; point: Point; over: string }
+export interface Geometry { shapes: Record<string, Bounds>; edges: Record<string, Point[]>; labels: Record<string, Bounds>; stages: Record<string, Bounds>; viewport: Bounds; crossings: Crossing[] }
+export interface Diagnostic { code: string; id: string; message: string; severity: 'error' | 'warning' | 'info'; relatedIds?: string[]; point?: Point; bounds?: Bounds }
 export class BplmError extends Error {
   code: number; diagnostics: Diagnostic[];
   constructor(code: number, message: string, diagnostics: Diagnostic[] = []) { super(message); this.code = code; this.diagnostics = diagnostics; }
