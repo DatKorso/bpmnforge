@@ -10,6 +10,6 @@ viewer.importXML(data.xml).then(({ warnings }: any) => {
   document.getElementById('status')!.textContent = 'Схема загружена';
 }).catch(() => { document.body.dataset.error = 'true'; document.getElementById('status')!.textContent = 'Не удалось открыть BPMN'; });
 const list = document.getElementById('documents')!;
-for (const item of [data.model, ...data.model.nodes, ...(data.model.annotations ?? [])]) for (const link of item.links ?? []) {
+for (const item of [data.model, ...data.model.stages, ...data.model.processes, ...data.model.pools, ...data.model.lanes, ...data.model.nodes, ...(data.model.annotations ?? [])]) for (const link of item.links ?? []) {
   const a = document.createElement('a'); a.textContent = link.name; a.setAttribute('href', link.href); a.rel = 'noopener noreferrer'; list.append(a);
 }
