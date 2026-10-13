@@ -32,15 +32,18 @@ export function layoutProcess(model: ProcessDocument): Geometry {
   const labels: Geometry['labels'] = Object.create(null), stages: Geometry['stages'] = Object.create(null);
   const errors: Diagnostic[] = [];
   const fail = (code: string, id: string, message: string) => errors.push({ code, id, message, severity: 'error' });
-  const cells = new Map<string, { column: number; row: number }>(), occupied = new Set<string>();
+  const cells = new Map<string, { column: number; row: number }>(), occupied = new Map<string, string>();
+  const cellConflicts: { id: string; otherId: string }[] = [];
   const items = [...model.nodes, ...(model.annotations ?? [])];
   const counts = new Map<string, number>();
   for (const item of items) {
     const key = `${item.process}/${item.lane ?? ''}/${item.stage}/${item.row ?? 0}`;
     const column = item.column ?? counts.get(key) ?? 0, row = item.row ?? 0;
     const cell = `${key}/${column}`;
-    if (occupied.has(cell)) fail('CELL_CONFLICT', item.id, 'Two elements occupy the same stage/lane cell');
-    occupied.add(cell); counts.set(key, Math.max(counts.get(key) ?? 0, column + 1)); cells.set(item.id, { column, row });
+    const otherId = occupied.get(cell);
+    if (otherId) cellConflicts.push({ id: item.id, otherId });
+    else occupied.set(cell, item.id);
+    counts.set(key, Math.max(counts.get(key) ?? 0, column + 1)); cells.set(item.id, { column, row });
   }
   let x = 110;
   for (const stage of model.stages) {
@@ -67,6 +70,10 @@ export function layoutProcess(model: ProcessDocument): Geometry {
       top += height;
     }
     shapes[pool.id] = { x: 40, y: poolTop, width, height: top - poolTop }; top += 80;
+  }
+  for (const conflict of cellConflicts) {
+    const bounds = shapes[conflict.id];
+    errors.push({ code: 'CELL_CONFLICT', id: conflict.id, relatedIds: [conflict.otherId], point: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }, bounds, message: 'Two elements occupy the same stage/lane cell', severity: 'error' });
   }
   const itemIds = new Set(items.map(item => item.id));
   const obstacles = () => [...Object.entries(shapes).filter(([id]) => itemIds.has(id)), ...Object.entries(labels)].map(([id, box]) => ({ id, box }));

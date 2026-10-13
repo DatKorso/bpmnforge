@@ -30,7 +30,7 @@ function showOverview() { markStage(null); setView(data.geometry.viewport); stat
 function showStage(id: string) {
   const stage = data.model.stages.find((item: any) => item.id === id);
   if (!stage || !data.geometry.stages[id]) return;
-  markStage(id); setView(data.geometry.stages[id], 0.72); status.textContent = `Этап: ${stage.name}`;
+  markStage(id); setView(data.geometry.stages[id], 1.2); status.textContent = `Этап: ${stage.name}`;
 }
 function adjustZoom(factor: number, center?: { x: number; y: number }) {
   canvas.zoom(Math.max(0.2, Math.min(3, canvas.zoom() * factor)), center); updateZoom();
