@@ -61,11 +61,12 @@ export function layoutProcess(model: ProcessDocument): Geometry {
       if (lane.id) shapes[lane.id] = { x: 70, y: top, width: width - 30, height };
       for (const item of members) {
         const annotation = 'text' in item, type = 'type' in item ? item.type : 'annotation';
-        const size = annotation ? { width: 180, height: Math.max(70, Math.ceil(item.text.length / 22) * 18 + 24) } : type === 'task' ? { width: 180, height: Math.max(80, Math.ceil(item.name.length / 22) * 18 + 24) } : type === 'xor' || type === 'and' ? { width: 50, height: 50 } : { width: 36, height: 36 };
+        const taskLike = type === 'task' || type === 'userTask';
+        const size = annotation ? { width: 180, height: Math.max(70, Math.ceil(item.text.length / 22) * 18 + 24) } : taskLike ? { width: 180, height: Math.max(80, Math.ceil(item.name.length / 22) * 18 + 24) } : type === 'xor' || type === 'and' ? { width: 50, height: 50 } : { width: 36, height: 36 };
         if (size.height > 400) fail('LABEL_SIZE', item.id, 'Text annotation exceeds a grid cell; split the annotation');
         const cell = cells.get(item.id)!, centerY = top + 180 + cell.row * 540;
         shapes[item.id] = { x: stages[item.stage].x + cell.column * 260 + (220 - size.width) / 2, y: centerY - size.height / 2, ...size };
-        if (!annotation && type !== 'task') labels[item.id] = { x: stages[item.stage].x + cell.column * 260 + 20, y: centerY + 38, width: 180, height: Math.max(40, Math.ceil(item.name.length / 22) * 18) };
+        if (!annotation && !taskLike) labels[item.id] = { x: stages[item.stage].x + cell.column * 260 + 20, y: centerY + 38, width: 180, height: Math.max(40, Math.ceil(item.name.length / 22) * 18) };
       }
       top += height;
     }

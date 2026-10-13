@@ -6,7 +6,7 @@ export async function exportBpmn(model: ProcessDocument, geometry: Geometry): Pr
   const refs = new Map<string, any>(); const processes = new Map<string, any>();
   const sorted = <T extends { id: string }>(items: T[]) => [...items].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   for (const process of sorted(model.processes)) { const element = create('bpmn:Process', { id: process.id, name: process.name, isExecutable: false, flowElements: [], artifacts: [], laneSets: [] }); processes.set(process.id, element); refs.set(process.id, element); }
-  const types = { start: 'StartEvent', end: 'EndEvent', task: 'Task', xor: 'ExclusiveGateway', and: 'ParallelGateway' };
+  const types = { start: 'StartEvent', end: 'EndEvent', task: 'Task', userTask: 'UserTask', xor: 'ExclusiveGateway', and: 'ParallelGateway' };
   for (const node of sorted(model.nodes)) {
     const element = create(`bpmn:${types[node.type]}`, { id: node.id, name: node.name, incoming: [], outgoing: [], documentation: node.description ? [create('bpmn:Documentation', { text: node.description })] : [] });
     refs.set(node.id, element); processes.get(node.process).flowElements.push(element); element.$parent = processes.get(node.process);

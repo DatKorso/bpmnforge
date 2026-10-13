@@ -25,7 +25,7 @@
     "owner": { "type": "object", "additionalProperties": false, "required": ["id", "name", "process"], "properties": { "id": { "$ref": "#/definitions/id" }, "name": { "$ref": "#/definitions/name" }, "description": { "$ref": "#/definitions/text" }, "links": { "$ref": "#/definitions/links" }, "process": { "$ref": "#/definitions/id" } } },
     "node": {
       "type": "object", "additionalProperties": false, "required": ["id", "name", "type", "process", "stage"],
-      "properties": { "id": { "$ref": "#/definitions/id" }, "name": { "$ref": "#/definitions/name" }, "description": { "$ref": "#/definitions/text" }, "links": { "$ref": "#/definitions/links" }, "type": { "enum": ["start", "end", "task", "xor", "and"] }, "process": { "$ref": "#/definitions/id" }, "stage": { "$ref": "#/definitions/id" }, "lane": { "$ref": "#/definitions/id" }, "required": { "type": "boolean" }, "defaultFlow": { "$ref": "#/definitions/id" }, "column": { "$ref": "#/definitions/cell" }, "row": { "$ref": "#/definitions/cell" } }
+      "properties": { "id": { "$ref": "#/definitions/id" }, "name": { "$ref": "#/definitions/name" }, "description": { "$ref": "#/definitions/text" }, "links": { "$ref": "#/definitions/links" }, "type": { "enum": ["start", "end", "task", "userTask", "xor", "and"] }, "process": { "$ref": "#/definitions/id" }, "stage": { "$ref": "#/definitions/id" }, "lane": { "$ref": "#/definitions/id" }, "required": { "type": "boolean" }, "defaultFlow": { "$ref": "#/definitions/id" }, "column": { "$ref": "#/definitions/cell" }, "row": { "$ref": "#/definitions/cell" } }
     },
     "flow": {
       "type": "object", "additionalProperties": false, "required": ["id", "type", "source", "target"],

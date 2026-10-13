@@ -1,6 +1,6 @@
 export interface Named { id: string; name: string; description?: string; links?: { name: string; href: string }[] }
 export interface ProcessNode extends Named {
-  type: 'start' | 'end' | 'task' | 'xor' | 'and'; process: string; lane?: string; stage: string;
+  type: 'start' | 'end' | 'task' | 'userTask' | 'xor' | 'and'; process: string; lane?: string; stage: string;
   required?: boolean; defaultFlow?: string; column?: number; row?: number;
 }
 export interface Flow { id: string; name?: string; type: 'sequence' | 'message' | 'association'; source: string; target: string; condition?: string; return?: boolean; route?: Point[] }
