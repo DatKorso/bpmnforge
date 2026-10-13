@@ -72,6 +72,22 @@ export function layoutProcess(model: ProcessDocument): Geometry {
     }
     shapes[pool.id] = { x: 40, y: poolTop, width, height: top - poolTop }; top += 80;
   }
+  const explicit = items.every(item => item.bounds) && model.pools.every(pool => pool.bounds) && model.lanes.every(lane => lane.bounds);
+  if (explicit) {
+    for (const item of items) {
+      shapes[item.id] = { ...item.bounds! };
+      if (item.labelBounds) labels[item.id] = { ...item.labelBounds };
+      else delete labels[item.id];
+    }
+    for (const pool of model.pools) shapes[pool.id] = { ...pool.bounds! };
+    for (const lane of model.lanes) shapes[lane.id] = { ...lane.bounds! };
+    for (const stage of model.stages) {
+      const boxes = items.filter(item => item.stage === stage.id).map(item => item.bounds!);
+      if (!boxes.length) continue;
+      const minX = Math.min(...boxes.map(box => box.x)), minY = Math.min(...boxes.map(box => box.y));
+      stages[stage.id] = { x: Math.max(0, minX - 80), y: Math.max(0, minY - 100), width: Math.max(...boxes.map(box => box.x + box.width)) - minX + 160, height: Math.max(...boxes.map(box => box.y + box.height)) - minY + 200 };
+    }
+  }
   for (const conflict of cellConflicts) {
     const bounds = shapes[conflict.id];
     errors.push({ code: 'CELL_CONFLICT', id: conflict.id, relatedIds: [conflict.otherId], point: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }, bounds, message: 'Two elements occupy the same stage/lane cell', severity: 'error' });
@@ -80,9 +96,12 @@ export function layoutProcess(model: ProcessDocument): Geometry {
   const obstacles = () => [...Object.entries(shapes).filter(([id]) => itemIds.has(id)), ...Object.entries(labels)].map(([id, box]) => ({ id, box }));
   const shapeEntries = Object.entries(shapes).filter(([id]) => itemIds.has(id));
   for (let i = 0; i < shapeEntries.length; i++) for (let j = i + 1; j < shapeEntries.length; j++) {
+    const left = model.nodes.find(node => node.id === shapeEntries[i][0]), right = model.nodes.find(node => node.id === shapeEntries[j][0]);
+    if ((left?.parent === right?.id || right?.parent === left?.id) && boxOverlap(shapeEntries[i][1], shapeEntries[j][1])) continue;
     if (boxOverlap(shapeEntries[i][1], shapeEntries[j][1])) errors.push({ code: 'SHAPE_OVERLAP', id: shapeEntries[i][0], relatedIds: [shapeEntries[j][0]], bounds: shapeEntries[i][1], message: 'Element shapes overlap', severity: 'error' });
   }
   for (const [id, label] of Object.entries(labels)) for (const [otherId, box] of shapeEntries) {
+    if (model.nodes.some(node => node.id === id && node.parent === otherId)) continue;
     if (id !== otherId && boxOverlap(label, box)) errors.push({ code: 'LABEL_OVERLAP', id, relatedIds: [otherId], bounds: label, message: 'Label overlaps an element', severity: 'error' });
   }
   if (errors.length) throw new BplmError(1, 'Invalid layout', errors);
@@ -109,7 +128,12 @@ export function layoutProcess(model: ProcessDocument): Geometry {
       const a = route[i - 1], b = route[i];
       if (a.x !== b.x && a.y !== b.y) { problems.push({ code: 'ROUTE_ORTHOGONAL', id, point: a, message: 'Route segment is not orthogonal', severity: 'error' }); continue; }
       if (equal(a, b)) { problems.push({ code: 'ROUTE_ZERO_LENGTH', id, point: a, message: 'Route segment has zero length', severity: 'error' }); continue; }
-      for (const obstacle of obstacles()) if (insideSegment(a, b, obstacle.box)) problems.push({ code: 'ROUTE_OBSTACLE', id, relatedIds: [obstacle.id], point: a.x === b.x ? { x: a.x, y: Math.max(Math.min(a.y, b.y), obstacle.box.y) } : { x: Math.max(Math.min(a.x, b.x), obstacle.box.x), y: a.y }, bounds: obstacle.box, message: `Route intersects ${obstacle.id}`, severity: 'error' });
+      const flow = model.flows.find(item => item.id === id);
+      for (const obstacle of obstacles()) {
+        const parent = model.nodes.find(node => node.id === obstacle.id && node.type === 'eventSubProcess');
+        if (parent && flow && [flow.source, flow.target].every(endpoint => model.nodes.some(node => node.id === endpoint && node.parent === parent.id))) continue;
+        if (insideSegment(a, b, obstacle.box)) problems.push({ code: 'ROUTE_OBSTACLE', id, relatedIds: [obstacle.id], point: a.x === b.x ? { x: a.x, y: Math.max(Math.min(a.y, b.y), obstacle.box.y) } : { x: Math.max(Math.min(a.x, b.x), obstacle.box.x), y: a.y }, bounds: obstacle.box, message: `Route intersects ${obstacle.id}`, severity: 'error' });
+      }
       for (const [otherId, otherRoute] of Object.entries(edges)) for (let j = 1; j < otherRoute.length; j++) {
         const contact = interaction(a, b, otherRoute[j - 1], otherRoute[j]); if (!contact) continue;
         if (contact.kind === 'crossing') found.push({ flows: [otherId, id], point: contact.point, over: id });
@@ -167,7 +191,7 @@ export function layoutProcess(model: ProcessDocument): Geometry {
     for (const route of sortedCandidates) {
       const result = checkRoute(flow.id, route);
       if (result.errors.length) { if (!nearest.length || result.errors.length < nearest.length) nearest = result.errors; continue; }
-      const label = title ? placeLabel(flow.id, title, route) : null;
+      const label = title ? flow.labelBounds ?? placeLabel(flow.id, title, route) : null;
       if (title && !label) { nearest = [{ code: 'LABEL_CLEARANCE', id: flow.id, point: route[0], message: 'No readable label position for flow', severity: 'error' }]; continue; }
       chosen = route; chosenLabel = label; accepted = result.crossings; break;
     }
@@ -175,7 +199,8 @@ export function layoutProcess(model: ProcessDocument): Geometry {
     edges[flow.id] = chosen; if (chosenLabel) labels[flow.id] = chosenLabel; crossings.push(...accepted);
   }
   if (errors.length) throw new BplmError(1, 'Invalid layout hints', errors);
-  for (const stage of Object.values(stages)) stage.height = top - 50;
+  if (!explicit) for (const stage of Object.values(stages)) stage.height = top - 50;
   const routePoints = Object.values(edges).flat();
-  return { shapes, edges, labels, stages, crossings, viewport: { x: 0, y: 0, width: Math.max(width + 80, ...routePoints.map(point => point.x + 40)), height: Math.max(top, ...routePoints.map(point => point.y + 40)) } };
+  const allBoxes = Object.values(shapes);
+  return { shapes, edges, labels, stages, crossings, viewport: { x: 0, y: 0, width: Math.max(width + 80, ...routePoints.map(point => point.x + 40), ...allBoxes.map(box => box.x + box.width + 40)), height: Math.max(top, ...routePoints.map(point => point.y + 40), ...allBoxes.map(box => box.y + box.height + 40)) } };
 }

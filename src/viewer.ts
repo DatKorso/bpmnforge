@@ -39,7 +39,7 @@ const registry: any = viewer.get('elementRegistry');
 const details = document.getElementById('details')!;
 const nodeById = new Map<string, any>(data.model.nodes.map((node: any) => [node.id, node]));
 const named = new Map<string, any>([...data.model.processes, ...data.model.pools, ...data.model.lanes, ...data.model.nodes, ...(data.model.annotations ?? [])].map((item: any) => [item.id, item]));
-const types: Record<string, string> = { start: 'Начало', end: 'Завершение', task: 'Задача', xor: 'Развилка: один исход', and: 'Параллельные ветви' };
+const types: Record<string, string> = { start: 'Начало', end: 'Завершение', task: 'Задача', userTask: 'Действие пользователя', serviceTask: 'Сервисная задача', sendTask: 'Отправка сообщения', receiveTask: 'Получение сообщения', businessRuleTask: 'Бизнес-правило', callActivity: 'Вызов общего процесса', timerCatch: 'Ожидание времени', conditionalStart: 'Начало по условию', terminateEnd: 'Завершение процесса', eventSubProcess: 'Событийный подпроцесс', xor: 'Развилка: один исход', and: 'Параллельные ветви' };
 let selectedId: string | null = null;
 function addText(parent: Element, tag: string, value: string, className?: string): Element {
   const element = document.createElement(tag); element.textContent = value;
@@ -49,7 +49,7 @@ function addText(parent: Element, tag: string, value: string, className?: string
 function flowName(flow: any): string {
   const source = nodeById.get(flow.source);
   const outcome = source?.defaultFlow === flow.id ? 'По умолчанию' : flow.condition ? `Условие: ${flow.condition}` : '';
-  return [flow.name || flow.id, outcome, flow.return ? 'Возврат' : ''].filter(Boolean).join(' — ');
+  return [flow.name || flow.id, flow.originalType === 'message' ? 'информационная связь из исходной схемы' : '', outcome, flow.return ? 'Возврат' : ''].filter(Boolean).join(' — ');
 }
 function reveal(id: string) {
   const box = data.geometry.shapes[id]; if (!box) return;
@@ -92,8 +92,27 @@ function selectNode(id: string, focus = false) {
   const pool = data.model.pools.find((item: any) => item.process === node.process);
   if (pool) addText(details, 'p', `Участник: ${pool.name}`);
   if (node.lane) addText(details, 'p', `Исполнитель: ${named.get(node.lane)?.name ?? node.lane}`);
+  if (node.parent) {
+    const parent = nodeById.get(node.parent);
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = `Подпроцесс: ${parent?.name ?? node.parent}`;
+    button.addEventListener('click', () => selectNode(node.parent, true)); details.append(button);
+  }
   addText(details, 'p', `Этап: ${data.model.stages.find((item: any) => item.id === node.stage)?.name ?? node.stage}`);
   addText(details, 'h3', 'Описание'); addText(details, 'p', node.description || 'Описание не задано');
+  if (node.type === 'eventSubProcess') {
+    addText(details, 'h3', 'Внутренние шаги');
+    for (const child of data.model.nodes.filter((item: any) => item.parent === node.id)) {
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = child.name;
+      button.addEventListener('click', () => selectNode(child.id, true)); details.append(button);
+    }
+  }
+  if (node.type === 'callActivity') {
+    const start = data.model.nodes.find((item: any) => item.process === node.calledElement && item.type === 'start' && !item.parent);
+    if (start) {
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = `Открыть общий процесс: ${named.get(node.calledElement)?.name ?? node.calledElement}`;
+      button.addEventListener('click', () => selectNode(start.id, true)); details.append(button);
+    }
+  }
   renderFlows(node, 'incoming'); renderFlows(node, 'outgoing');
   if (node.links?.length) {
     addText(details, 'h3', 'Документы');

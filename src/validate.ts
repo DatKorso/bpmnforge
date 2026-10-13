@@ -65,8 +65,9 @@ export async function validateProcess(input: unknown, options: { htmlPath: strin
       if (aPool && bPool && aPool === bPool) report('MESSAGE_POOL', flow.id, 'Messages must connect different participants');
     } else {
       const aa = annotations.get(flow.source), ba = annotations.get(flow.target);
-      if (!((aa && b && aa.process === b.process) || (ba && a && ba.process === a.process))) report('ASSOCIATION_ENDPOINT', flow.id, 'Association must connect a text annotation to a node in the same process');
+      if (!((aa && b && aa.process === b.process) || (ba && a && ba.process === a.process) || (a && b && (a.process === b.process || flow.originalType === 'message')))) report('ASSOCIATION_ENDPOINT', flow.id, 'Association endpoints must belong to one process unless an original message is explicitly preserved as a reference association');
     }
+    if (flow.originalType && flow.type !== 'association') report('FLOW_ORIGIN', flow.id, 'Original message provenance requires an association');
     if (flow.type !== 'sequence' && (flow.condition || flow.return)) report('FLOW_METADATA', flow.id, 'Conditions and return markers require a sequence flow');
   }
   for (const node of model.nodes) {
@@ -108,7 +109,7 @@ export async function validateProcess(input: unknown, options: { htmlPath: strin
     }
     for (const node of members) if (node.required !== false && !reached.has(node.id)) report('UNREACHABLE', node.id, 'Required node is unreachable from its start event');
   };
-  for (const process of model.processes) checkReachability(process.id, model.nodes.filter(node => node.process === process.id && !node.parent && node.type !== 'eventSubProcess'), 'start');
+  for (const process of model.processes) if (!process.external) checkReachability(process.id, model.nodes.filter(node => node.process === process.id && !node.parent && node.type !== 'eventSubProcess'), 'start');
   for (const sub of model.nodes.filter(node => node.type === 'eventSubProcess')) checkReachability(sub.id, model.nodes.filter(node => node.parent === sub.id), 'conditionalStart');
   const plain = model.flows.filter(flow => flow.type === 'sequence' && !flow.return && nodes.has(flow.source) && nodes.has(flow.target));
   const adjacency = new Map<string, string[]>(); for (const flow of plain) { const list = adjacency.get(flow.source) ?? []; list.push(flow.target); adjacency.set(flow.source, list); }
