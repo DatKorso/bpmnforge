@@ -5,10 +5,12 @@
   "description": "Offline process JSON to HTML and BPMN generator",
   "engines": { "node": ">=24" },
   "bin": { "bplm": "bin/bplm.mjs" },
-  "files": ["bin", "src", "schema", "assets", "README.md"],
+  "files": ["bin", "dist", "schema", "assets", "README.md"],
+  "exports": { "./build": "./dist/build.js", "./domain": "./dist/domain.js", "./validate": "./dist/validate.js", "./layout": "./dist/layout.js", "./bpmn": "./dist/bpmn.js", "./html": "./dist/html.js", "./schema": "./schema/bplm.schema.json" },
   "scripts": {
     "build": "node scripts/bundle.mjs",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run build",
     "test": "npm run typecheck && node --test tests/tracer.test.ts tests/validation.test.ts tests/build.test.ts",
     "test:tracer": "node --test tests/tracer.test.ts",
     "test:validation": "node --test tests/validation.test.ts",
