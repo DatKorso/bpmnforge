@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bplm.local/schema/1",
+  "title": "BPLM Phase 1 process source",
+  "type": "object", "additionalProperties": false,
+  "required": ["version", "id", "name", "stages", "processes", "pools", "lanes", "nodes", "flows"],
+  "properties": {
+    "version": { "const": 1 }, "id": { "$ref": "#/definitions/id" }, "name": { "$ref": "#/definitions/name" },
+    "description": { "$ref": "#/definitions/text" }, "links": { "$ref": "#/definitions/links" },
+    "stages": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "$ref": "#/definitions/named" } },
+    "processes": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "$ref": "#/definitions/named" } },
+    "pools": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "$ref": "#/definitions/owner" } },
+    "lanes": { "type": "array", "maxItems": 200, "items": { "$ref": "#/definitions/owner" } },
+    "nodes": { "type": "array", "minItems": 1, "maxItems": 500, "items": { "$ref": "#/definitions/node" } },
+    "flows": { "type": "array", "maxItems": 1000, "items": { "$ref": "#/definitions/flow" } },
+    "annotations": { "type": "array", "maxItems": 200, "items": { "$ref": "#/definitions/annotation" } }
+  },
+  "definitions": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 100, "pattern": "^(?!BPLM_)[A-Za-z_][A-Za-z0-9_.-]*$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 300, "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\ufffe\\uffff]*$" },
+    "text": { "type": "string", "maxLength": 20000, "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\ufffe\\uffff]*$" },
+    "cell": { "type": "integer", "minimum": 0, "maximum": 500 },
+    "links": { "type": "array", "maxItems": 50, "items": { "type": "object", "additionalProperties": false, "required": ["name", "href"], "properties": { "name": { "$ref": "#/definitions/name" }, "href": { "type": "string", "minLength": 1, "maxLength": 2048 } } } },
+    "named": { "type": "object", "additionalProperties": false, "required": ["id", "name"], "properties": { "id": { "$ref": "#/definitions/id" }, "name": { "$ref": "#/definitions/name" }, "description": { "$ref": "#/definitions/text" }, "links": { "$ref": "#/definitions/links" } } },
+    "owner": { "type": "object", "additionalProperties": false, "required": ["id", "name", "process"], "properties": { "id": { "$ref": "#/definitions/id" }, "name": { "$ref": "#/definitions/name" }, "description": { "$ref": "#/definitions/text" }, "links": { "$ref": "#/definitions/links" }, "process": { "$ref": "#/definitions/id" } } },
+    "node": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "type", "process", "stage"],
+      "properties": { "id": { "$ref": "#/definitions/id" }, "name": { "$ref": "#/definitions/name" }, "description": { "$ref": "#/definitions/text" }, "links": { "$ref": "#/definitions/links" }, "type": { "enum": ["start", "end", "task", "xor", "and"] }, "process": { "$ref": "#/definitions/id" }, "stage": { "$ref": "#/definitions/id" }, "lane": { "$ref": "#/definitions/id" }, "required": { "type": "boolean" }, "defaultFlow": { "$ref": "#/definitions/id" }, "column": { "$ref": "#/definitions/cell" }, "row": { "$ref": "#/definitions/cell" } }
+    },
+    "flow": {
+      "type": "object", "additionalProperties": false, "required": ["id", "type", "source", "target"],
+      "properties": { "id": { "$ref": "#/definitions/id" }, "name": { "$ref": "#/definitions/name" }, "type": { "enum": ["sequence", "message", "association"] }, "source": { "$ref": "#/definitions/id" }, "target": { "$ref": "#/definitions/id" }, "condition": { "$ref": "#/definitions/name" }, "return": { "type": "boolean" }, "route": { "type": "array", "minItems": 2, "maxItems": 30, "items": { "type": "object", "additionalProperties": false, "required": ["x", "y"], "properties": { "x": { "type": "number", "minimum": 0, "maximum": 1000000 }, "y": { "type": "number", "minimum": 0, "maximum": 1000000 } } } } }
+    },
+    "annotation": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "text", "process", "stage"],
+      "properties": { "id": { "$ref": "#/definitions/id" }, "name": { "$ref": "#/definitions/name" }, "text": { "$ref": "#/definitions/text" }, "description": { "$ref": "#/definitions/text" }, "links": { "$ref": "#/definitions/links" }, "process": { "$ref": "#/definitions/id" }, "stage": { "$ref": "#/definitions/id" }, "lane": { "$ref": "#/definitions/id" }, "column": { "$ref": "#/definitions/cell" }, "row": { "$ref": "#/definitions/cell" } }
+    }
+  }
+}

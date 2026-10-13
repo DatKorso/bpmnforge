@@ -3,7 +3,7 @@ export interface ProcessNode extends Named {
   type: 'start' | 'end' | 'task' | 'xor' | 'and'; process: string; lane?: string; stage: string;
   required?: boolean; defaultFlow?: string; column?: number; row?: number;
 }
-export interface Flow extends Named { type: 'sequence' | 'message' | 'association'; source: string; target: string; condition?: string; return?: boolean; route?: Point[] }
+export interface Flow { id: string; name?: string; type: 'sequence' | 'message' | 'association'; source: string; target: string; condition?: string; return?: boolean; route?: Point[] }
 export interface Point { x: number; y: number }
 export interface Bounds extends Point { width: number; height: number }
 export interface ProcessDocument extends Named {
