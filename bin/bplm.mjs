@@ -1,3 +1,3 @@
 #!/usr/bin/env node
-console.error('Generation is not implemented');
-process.exitCode = 3;
+import { runCli } from '../src/cli.ts';
+process.exitCode = await runCli(process.argv.slice(2));

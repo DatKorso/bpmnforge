@@ -1,0 +1,9 @@
+import { readFile } from 'node:fs/promises';
+import type { ProcessDocument, Geometry } from './domain.ts';
+export async function renderStandaloneHtml(model: ProcessDocument, geometry: Geometry, xml: string): Promise<string> {
+  const script = await readFile(new URL('../assets/viewer.js', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../assets/viewer.css', import.meta.url), 'utf8');
+  const license = await readFile(new URL('../assets/bpmn-js-LICENSE.txt', import.meta.url), 'utf8');
+  const data = JSON.stringify({ model, geometry, xml }).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BPLM — схема процесса</title><style>${css}\n*{box-sizing:border-box}body{margin:0;background:#f4f7fb;color:#23364c;font:15px/1.5 system-ui,sans-serif}header{background:white;border-bottom:1px solid #dce4ee;padding:20px 26px}h1{margin:0;font-size:25px}#status{color:#65798f}#documents{display:flex;gap:16px;flex-wrap:wrap}a{color:#2064aa}#bpmn-canvas{height:calc(100vh - 140px);min-height:480px;margin:16px;border:1px solid #dce4ee;background:white;border-radius:12px;overflow:hidden}summary:focus-visible,a:focus-visible{outline:3px solid #4687c1}details{margin:16px}pre{white-space:pre-wrap}</style></head><body><header><h1 id="title"></h1><p id="status" role="status">Загрузка схемы…</p><nav id="documents" aria-label="Документы"></nav></header><main id="bpmn-canvas" aria-label="Схема процесса"></main><details><summary>Лицензия BPMN viewer</summary><pre>${license.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</pre></details><script type="application/json" id="bplm-data">${data}</script><script>${script.replace(/<\/script/gi, '<\\/script')}</script></body></html>\n`;
+}
