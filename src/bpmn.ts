@@ -6,14 +6,26 @@ export async function exportBpmn(model: ProcessDocument, geometry: Geometry): Pr
   const refs = new Map<string, any>(); const processes = new Map<string, any>();
   const sorted = <T extends { id: string }>(items: T[]) => [...items].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   for (const process of sorted(model.processes)) { const element = create('bpmn:Process', { id: process.id, name: process.name, isExecutable: false, flowElements: [], artifacts: [], laneSets: [] }); processes.set(process.id, element); refs.set(process.id, element); }
-  const types = { start: 'StartEvent', end: 'EndEvent', task: 'Task', userTask: 'UserTask', serviceTask: 'ServiceTask', sendTask: 'SendTask', receiveTask: 'ReceiveTask', businessRuleTask: 'BusinessRuleTask', callActivity: 'CallActivity', xor: 'ExclusiveGateway', and: 'ParallelGateway' };
-  for (const node of sorted(model.nodes)) {
-    const element = create(`bpmn:${types[node.type]}`, { id: node.id, name: node.name, incoming: [], outgoing: [], documentation: node.description ? [create('bpmn:Documentation', { text: node.description })] : [], ...(node.type === 'callActivity' ? { calledElement: node.calledElement } : {}) });
+  const types = { start: 'StartEvent', end: 'EndEvent', task: 'Task', userTask: 'UserTask', serviceTask: 'ServiceTask', sendTask: 'SendTask', receiveTask: 'ReceiveTask', businessRuleTask: 'BusinessRuleTask', callActivity: 'CallActivity', timerCatch: 'IntermediateCatchEvent', conditionalStart: 'StartEvent', terminateEnd: 'EndEvent', eventSubProcess: 'SubProcess', xor: 'ExclusiveGateway', and: 'ParallelGateway' };
+  const events = (node: typeof model.nodes[number]) => {
+    if (node.type === 'timerCatch') return [create('bpmn:TimerEventDefinition', { [node.timer!.kind]: create('bpmn:FormalExpression', { body: node.timer!.expression }) })];
+    if (node.type === 'conditionalStart') return [create('bpmn:ConditionalEventDefinition', { condition: create('bpmn:FormalExpression', { body: node.condition }) })];
+    if (node.type === 'terminateEnd') return [create('bpmn:TerminateEventDefinition', {})];
+    return [];
+  };
+  for (const node of sorted(model.nodes.filter(node => node.type === 'eventSubProcess'))) {
+    const element = create('bpmn:SubProcess', { id: node.id, name: node.name, triggeredByEvent: true, flowElements: [], incoming: [], outgoing: [], documentation: node.description ? [create('bpmn:Documentation', { text: node.description })] : [] });
     refs.set(node.id, element); processes.get(node.process).flowElements.push(element); element.$parent = processes.get(node.process);
+  }
+  for (const node of sorted(model.nodes.filter(node => node.type !== 'eventSubProcess'))) {
+    const eventDefinitions = events(node);
+    const element = create(`bpmn:${types[node.type]}`, { id: node.id, name: node.name, incoming: [], outgoing: [], documentation: node.description ? [create('bpmn:Documentation', { text: node.description })] : [], ...(node.type === 'callActivity' ? { calledElement: node.calledElement } : {}), ...(eventDefinitions.length ? { eventDefinitions } : {}) });
+    const owner = node.parent ? refs.get(node.parent) : processes.get(node.process);
+    refs.set(node.id, element); owner.flowElements.push(element); element.$parent = owner;
   }
   for (const annotation of sorted(model.annotations ?? [])) { const element = create('bpmn:TextAnnotation', { id: annotation.id, text: annotation.text }); refs.set(annotation.id, element); processes.get(annotation.process).artifacts.push(element); }
   for (const process of sorted(model.processes)) {
-    const lanes = sorted(model.lanes.filter(lane => lane.process === process.id)).map(lane => { const element = create('bpmn:Lane', { id: lane.id, name: lane.name, flowNodeRef: sorted(model.nodes.filter(node => node.lane === lane.id)).map(node => refs.get(node.id)) }); refs.set(lane.id, element); return element; });
+    const lanes = sorted(model.lanes.filter(lane => lane.process === process.id)).map(lane => { const element = create('bpmn:Lane', { id: lane.id, name: lane.name, flowNodeRef: sorted(model.nodes.filter(node => node.lane === lane.id && !node.parent)).map(node => refs.get(node.id)) }); refs.set(lane.id, element); return element; });
     if (lanes.length) processes.get(process.id).laneSets = [create('bpmn:LaneSet', { id: `BPLM_Lanes_${process.id}`, lanes })];
   }
   const collaboration = create('bpmn:Collaboration', { id: 'BPLM_Collaboration', participants: sorted(model.pools).map(pool => { const element = create('bpmn:Participant', { id: pool.id, name: pool.name, processRef: processes.get(pool.process) }); refs.set(pool.id, element); return element; }), messageFlows: [] });
@@ -26,7 +38,8 @@ export async function exportBpmn(model: ProcessDocument, geometry: Geometry): Pr
     else {
       const ownerId = model.nodes.find(node => node.id === flow.source)?.process ?? model.annotations?.find(node => node.id === flow.source)?.process ?? model.nodes.find(node => node.id === flow.target)?.process;
       if (!ownerId) throw new Error('Flow owner missing after validation');
-      const owner = processes.get(ownerId);
+      const sourceNode = model.nodes.find(node => node.id === flow.source);
+      const owner = flow.type === 'sequence' && sourceNode?.parent ? refs.get(sourceNode.parent) : processes.get(ownerId);
       if (flow.type === 'sequence') { owner.flowElements.push(element); source.outgoing.push(element); target.incoming.push(element); if (flow.condition) element.conditionExpression = create('bpmn:FormalExpression', { body: flow.condition }); }
       else owner.artifacts.push(element);
     }

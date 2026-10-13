@@ -39,13 +39,24 @@ export async function validateProcess(input: unknown, options: { htmlPath: strin
     else if (item.lane && lanes.get(item.lane)!.process !== item.process) report('LANE_PROCESS', item.id, 'Lane belongs to a different process');
     if (!item.lane && model.lanes.some(lane => lane.process === item.process)) report('LANE_REQUIRED', item.id, 'Node must name a lane in a partitioned process');
   }
+  for (const node of model.nodes) {
+    if (node.parent) {
+      const parent = nodes.get(node.parent);
+      if (!parent || parent.type !== 'eventSubProcess' || parent.process !== node.process) report('CONTAINMENT', node.id, 'Parent must be an event subprocess in the same process');
+    }
+    if (node.type === 'eventSubProcess' && node.parent) report('EVENT_NESTING', node.id, 'Event subprocess nesting is unsupported');
+    if (node.type === 'conditionalStart' && !node.parent) report('EVENT_PLACEMENT', node.id, 'Conditional start belongs inside an event subprocess');
+    if (node.parent && node.type === 'start') report('EVENT_PLACEMENT', node.id, 'Event subprocess requires a conditional start');
+    if (node.type === 'timerCatch' && !node.timer?.expression.trim()) report('EVENT_DEFINITION', node.id, 'Timer expression must be non-empty');
+    if (node.type === 'conditionalStart' && !node.condition?.trim()) report('EVENT_DEFINITION', node.id, 'Conditional expression must be non-empty');
+  }
   const incoming = new Map(model.nodes.map(node => [node.id, [] as typeof model.flows])); const outgoing = new Map(model.nodes.map(node => [node.id, [] as typeof model.flows]));
   for (const flow of model.flows) {
     if (!ids.has(flow.source)) report('REFERENCE', flow.id, `Unknown source ${flow.source}`);
     if (!ids.has(flow.target)) report('REFERENCE', flow.id, `Unknown target ${flow.target}`);
     const a = nodes.get(flow.source), b = nodes.get(flow.target);
     if (flow.type === 'sequence') {
-      if (!a || !b || a.process !== b.process) report('SEQUENCE_CONTAINER', flow.id, 'Sequence endpoints must be flow nodes of the same process');
+      if (!a || !b || a.process !== b.process || a.parent !== b.parent) report('SEQUENCE_CONTAINER', flow.id, 'Sequence endpoints must share a flow container');
       if (a) outgoing.get(a.id)!.push(flow); if (b) incoming.get(b.id)!.push(flow);
       if (flow.condition && a?.type !== 'xor') report('CONDITION_SOURCE', flow.id, 'Conditions are supported only on XOR outgoing branches');
     } else if (flow.type === 'message') {
@@ -60,8 +71,9 @@ export async function validateProcess(input: unknown, options: { htmlPath: strin
   }
   for (const node of model.nodes) {
     const ins = incoming.get(node.id)!, outs = outgoing.get(node.id)!;
-    if (node.type === 'start' && ins.length) report('START_INCOMING', node.id, 'Start event cannot have incoming sequence flows');
-    if (node.type === 'end' && outs.length) report('END_OUTGOING', node.id, 'End event cannot have outgoing sequence flows');
+    if ((node.type === 'start' || node.type === 'conditionalStart') && ins.length) report('START_INCOMING', node.id, 'Start event cannot have incoming sequence flows');
+    if ((node.type === 'end' || node.type === 'terminateEnd') && outs.length) report('END_OUTGOING', node.id, 'End event cannot have outgoing sequence flows');
+    if (node.type === 'eventSubProcess' && (ins.length || outs.length)) report('EVENT_SUBPROCESS_FLOW', node.id, 'Event subprocess cannot have incoming or outgoing sequence flows');
     if (node.defaultFlow) {
       if (node.type !== 'xor') report('DEFAULT_SOURCE', node.id, 'Default branch requires an XOR gateway');
       const flow = outs.find(flow => flow.id === node.defaultFlow);
@@ -84,14 +96,20 @@ export async function validateProcess(input: unknown, options: { htmlPath: strin
       }
     }
   }
-  for (const process of model.processes) {
-    const members = model.nodes.filter(node => node.process === process.id), starts = members.filter(node => node.type === 'start');
-    if (!starts.length) report('MISSING_START', process.id, 'Process requires a start event');
-    if (!members.some(node => node.type === 'end')) report('MISSING_END', process.id, 'Process requires an end event');
-    const reached = new Set(starts.map(node => node.id)); const queue = [...reached];
-    for (let i = 0; i < queue.length; i++) for (const flow of outgoing.get(queue[i]) ?? []) if (nodes.get(flow.target)?.process === process.id && !reached.has(flow.target)) { reached.add(flow.target); queue.push(flow.target); }
-    for (const node of members) if (node.required !== false && !reached.has(node.id)) report('UNREACHABLE', node.id, 'Required node is unreachable from a start event');
-  }
+  const checkReachability = (containerId: string, members: typeof model.nodes, startType: 'start' | 'conditionalStart') => {
+    const starts = members.filter(node => node.type === startType);
+    if (starts.length !== 1 && startType === 'conditionalStart') report('EVENT_START', containerId, 'Event subprocess requires exactly one conditional start');
+    if (!starts.length && startType === 'start') report('MISSING_START', containerId, 'Process requires a start event');
+    if (!members.some(node => node.type === 'end' || node.type === 'terminateEnd')) report('MISSING_END', containerId, 'Flow container requires an end event');
+    const memberIds = new Set(members.map(node => node.id));
+    const reached = new Set(starts.map(node => node.id)), queue = [...reached];
+    for (let i = 0; i < queue.length; i++) for (const flow of outgoing.get(queue[i]) ?? []) {
+      if (memberIds.has(flow.target) && !reached.has(flow.target)) { reached.add(flow.target); queue.push(flow.target); }
+    }
+    for (const node of members) if (node.required !== false && !reached.has(node.id)) report('UNREACHABLE', node.id, 'Required node is unreachable from its start event');
+  };
+  for (const process of model.processes) checkReachability(process.id, model.nodes.filter(node => node.process === process.id && !node.parent && node.type !== 'eventSubProcess'), 'start');
+  for (const sub of model.nodes.filter(node => node.type === 'eventSubProcess')) checkReachability(sub.id, model.nodes.filter(node => node.parent === sub.id), 'conditionalStart');
   const plain = model.flows.filter(flow => flow.type === 'sequence' && !flow.return && nodes.has(flow.source) && nodes.has(flow.target));
   const adjacency = new Map<string, string[]>(); for (const flow of plain) { const list = adjacency.get(flow.source) ?? []; list.push(flow.target); adjacency.set(flow.source, list); }
   for (const flow of plain) {
