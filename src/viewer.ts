@@ -191,6 +191,10 @@ viewer.importXML(data.xml).then(({ warnings }: any) => {
   wireNodes(); renderBridges(); showOverview(); document.body.dataset.ready = 'true'; status.textContent = 'Схема загружена';
 }).catch(() => { document.body.dataset.error = 'true'; status.textContent = 'Не удалось открыть BPMN'; });
 const list = document.getElementById('documents')!;
+const shownLinks = new Set<string>();
 for (const item of [data.model, ...data.model.stages, ...data.model.processes, ...data.model.pools, ...data.model.lanes, ...data.model.nodes, ...(data.model.annotations ?? [])]) for (const link of item.links ?? []) {
+  const key = `${link.name}\u0000${link.href}`;
+  if (shownLinks.has(key)) continue;
+  shownLinks.add(key);
   const a = document.createElement('a'); a.textContent = link.name; a.setAttribute('href', link.href); a.rel = 'noopener noreferrer'; list.append(a);
 }

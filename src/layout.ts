@@ -82,7 +82,7 @@ export function layoutProcess(model: ProcessDocument): Geometry {
     for (const pool of model.pools) shapes[pool.id] = { ...pool.bounds! };
     for (const lane of model.lanes) shapes[lane.id] = { ...lane.bounds! };
     for (const stage of model.stages) {
-      const boxes = items.filter(item => item.stage === stage.id).map(item => item.bounds!);
+      const boxes = model.nodes.filter(item => item.stage === stage.id).map(item => item.bounds!);
       if (!boxes.length) continue;
       const minX = Math.min(...boxes.map(box => box.x)), minY = Math.min(...boxes.map(box => box.y));
       stages[stage.id] = { x: Math.max(0, minX - 80), y: Math.max(0, minY - 100), width: Math.max(...boxes.map(box => box.x + box.width)) - minX + 160, height: Math.max(...boxes.map(box => box.y + box.height)) - minY + 200 };
@@ -93,6 +93,12 @@ export function layoutProcess(model: ProcessDocument): Geometry {
     errors.push({ code: 'CELL_CONFLICT', id: conflict.id, relatedIds: [conflict.otherId], point: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }, bounds, message: 'Two elements occupy the same stage/lane cell', severity: 'error' });
   }
   const itemIds = new Set(items.map(item => item.id));
+  for (const node of model.nodes) if (node.parent) {
+    const child = shapes[node.id], parent = shapes[node.parent];
+    if (child && parent && (child.x < parent.x + 12 || child.y < parent.y + 12 || child.x + child.width > parent.x + parent.width - 12 || child.y + child.height > parent.y + parent.height - 12)) {
+      errors.push({ code: 'SUBPROCESS_BOUNDS', id: node.id, relatedIds: [node.parent], bounds: child, message: 'Child shape must fit inside its event subprocess', severity: 'error' });
+    }
+  }
   const obstacles = () => [...Object.entries(shapes).filter(([id]) => itemIds.has(id)), ...Object.entries(labels)].map(([id, box]) => ({ id, box }));
   const shapeEntries = Object.entries(shapes).filter(([id]) => itemIds.has(id));
   for (let i = 0; i < shapeEntries.length; i++) for (let j = i + 1; j < shapeEntries.length; j++) {
@@ -155,7 +161,10 @@ export function layoutProcess(model: ProcessDocument): Geometry {
       if (a.y === b.y) for (const offset of [-height - 10, 10]) candidates.push({ x: (a.x + b.x) / 2 - width / 2, y: a.y + offset, width, height });
       else for (const offset of [10, -width - 10]) candidates.push({ x: a.x + offset, y: (a.y + b.y) / 2 - height / 2, width, height });
     }
-    return candidates.find(box => box.x >= 0 && box.y >= 0 && obstacles().every(other => !boxOverlap(box, other.box)) && Object.values(edges).every(points => points.slice(1).every((end, i) => !insideSegment(points[i], end, box))) && route.slice(1).every((end, i) => !insideSegment(route[i], end, box))) ?? null;
+    return candidates.find(box => labelClear(box, route)) ?? null;
+  }
+  function labelClear(box: Bounds, route: Point[]): boolean {
+    return box.x >= 0 && box.y >= 0 && obstacles().every(other => !boxOverlap(box, other.box)) && Object.values(edges).every(points => points.slice(1).every((end, i) => !insideSegment(points[i], end, box))) && route.slice(1).every((end, i) => !insideSegment(route[i], end, box));
   }
   for (const flow of sortedFlows) {
     const a = shapes[flow.source], b = shapes[flow.target];
@@ -192,7 +201,7 @@ export function layoutProcess(model: ProcessDocument): Geometry {
       const result = checkRoute(flow.id, route);
       if (result.errors.length) { if (!nearest.length || result.errors.length < nearest.length) nearest = result.errors; continue; }
       const label = title ? flow.labelBounds ?? placeLabel(flow.id, title, route) : null;
-      if (title && !label) { nearest = [{ code: 'LABEL_CLEARANCE', id: flow.id, point: route[0], message: 'No readable label position for flow', severity: 'error' }]; continue; }
+      if (title && (!label || !labelClear(label, route))) { nearest = [{ code: 'LABEL_CLEARANCE', id: flow.id, point: route[0], message: 'No readable label position for flow', severity: 'error' }]; continue; }
       chosen = route; chosenLabel = label; accepted = result.crossings; break;
     }
     if (!chosen) { const unsatisfiable: Diagnostic = { code: 'ROUTE_UNSATISFIABLE', id: flow.id, relatedIds: [flow.source, flow.target], point: start, message: 'No collision-free orthogonal route exists; add a valid route hint or more grid space', severity: 'error' }; errors.push(...(flow.route ? nearest : [unsatisfiable])); continue; }

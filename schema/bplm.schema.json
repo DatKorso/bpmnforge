@@ -35,7 +35,7 @@
     },
     "flow": {
       "type": "object", "additionalProperties": false, "required": ["id", "type", "source", "target"],
-      "properties": { "id": { "$ref": "#/definitions/id" }, "name": { "$ref": "#/definitions/name" }, "type": { "enum": ["sequence", "message", "association"] }, "originalType": { "const": "message" }, "source": { "$ref": "#/definitions/id" }, "target": { "$ref": "#/definitions/id" }, "condition": { "$ref": "#/definitions/name" }, "return": { "type": "boolean" }, "labelBounds": { "$ref": "#/definitions/bounds" }, "route": { "type": "array", "minItems": 2, "maxItems": 30, "items": { "type": "object", "additionalProperties": false, "required": ["x", "y"], "properties": { "x": { "type": "number", "minimum": 0, "maximum": 1000000 }, "y": { "type": "number", "minimum": 0, "maximum": 1000000 } } } } }
+      "properties": { "id": { "$ref": "#/definitions/id" }, "name": { "$ref": "#/definitions/name" }, "type": { "enum": ["sequence", "message", "association"] }, "originalType": { "enum": ["message", "association"] }, "source": { "$ref": "#/definitions/id" }, "target": { "$ref": "#/definitions/id" }, "condition": { "$ref": "#/definitions/name" }, "return": { "type": "boolean" }, "labelBounds": { "$ref": "#/definitions/bounds" }, "route": { "type": "array", "minItems": 2, "maxItems": 30, "items": { "type": "object", "additionalProperties": false, "required": ["x", "y"], "properties": { "x": { "type": "number", "minimum": 0, "maximum": 1000000 }, "y": { "type": "number", "minimum": 0, "maximum": 1000000 } } } } }
     },
     "annotation": {
       "type": "object", "additionalProperties": false, "required": ["id", "name", "text", "process", "stage"],

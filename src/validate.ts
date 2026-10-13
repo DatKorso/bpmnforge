@@ -65,7 +65,7 @@ export async function validateProcess(input: unknown, options: { htmlPath: strin
       if (aPool && bPool && aPool === bPool) report('MESSAGE_POOL', flow.id, 'Messages must connect different participants');
     } else {
       const aa = annotations.get(flow.source), ba = annotations.get(flow.target);
-      if (!((aa && b && aa.process === b.process) || (ba && a && ba.process === a.process) || (a && b && (a.process === b.process || flow.originalType === 'message')))) report('ASSOCIATION_ENDPOINT', flow.id, 'Association endpoints must belong to one process unless an original message is explicitly preserved as a reference association');
+      if (!((aa && b && aa.process === b.process) || (ba && a && ba.process === a.process) || (a && b && flow.originalType && (a.process === b.process || flow.originalType === 'message')))) report('ASSOCIATION_ENDPOINT', flow.id, 'Node-to-node association requires explicit reference provenance; other associations connect an annotation and node in one process');
     }
     if (flow.originalType && flow.type !== 'association') report('FLOW_ORIGIN', flow.id, 'Original message provenance requires an association');
     if (flow.type !== 'sequence' && (flow.condition || flow.return)) report('FLOW_METADATA', flow.id, 'Conditions and return markers require a sequence flow');

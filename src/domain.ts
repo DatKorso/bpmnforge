@@ -5,7 +5,7 @@ export interface ProcessNode extends Named {
   timer?: { kind: 'timeDate' | 'timeDuration' | 'timeCycle'; expression: string }; condition?: string;
   column?: number; row?: number;
 }
-export interface Flow { id: string; name?: string; type: 'sequence' | 'message' | 'association'; originalType?: 'message'; source: string; target: string; condition?: string; return?: boolean; route?: Point[]; labelBounds?: Bounds }
+export interface Flow { id: string; name?: string; type: 'sequence' | 'message' | 'association'; originalType?: 'message' | 'association'; source: string; target: string; condition?: string; return?: boolean; route?: Point[]; labelBounds?: Bounds }
 export interface Point { x: number; y: number }
 export interface Bounds extends Point { width: number; height: number }
 export interface ProcessDocument extends Named {
