@@ -70,6 +70,20 @@ export async function validateProcess(input: unknown, options: { htmlPath: strin
     }
     if (node.type === 'xor' && outs.length > 1) for (const flow of outs) if (flow.id !== node.defaultFlow && !flow.condition?.trim()) report('XOR_CONDITION', flow.id, 'XOR branch requires a condition or an explicit default');
   }
+  const calls = model.nodes.filter(node => node.type === 'callActivity');
+  for (const call of calls) {
+    if (!processes.has(call.calledElement!)) report('CALL_TARGET', call.id, `Unknown local process ${call.calledElement}`);
+    else {
+      const seen = new Set<string>(), queue = [call.calledElement!];
+      for (let i = 0; i < queue.length; i++) {
+        const current = queue[i];
+        if (current === call.process) { report('CALL_CYCLE', call.id, 'Local process calls must be acyclic'); break; }
+        if (seen.has(current)) continue;
+        seen.add(current);
+        for (const next of calls.filter(item => item.process === current && processes.has(item.calledElement!))) queue.push(next.calledElement!);
+      }
+    }
+  }
   for (const process of model.processes) {
     const members = model.nodes.filter(node => node.process === process.id), starts = members.filter(node => node.type === 'start');
     if (!starts.length) report('MISSING_START', process.id, 'Process requires a start event');
