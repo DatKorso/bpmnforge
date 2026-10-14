@@ -64,8 +64,8 @@ function addText(parent: Element, tag: string, value: string, className?: string
 }
 function flowName(flow: any): string {
   const source = nodeById.get(flow.source);
-  const outcome = source?.defaultFlow === flow.id ? 'По умолчанию' : flow.condition ? `Условие: ${flow.condition}` : '';
-  return [flow.name || flow.id, flow.originalType === 'message' ? 'информационная связь из исходной схемы' : '', outcome, flow.return ? 'Возврат' : ''].filter(Boolean).join(' — ');
+  const name = flow.name?.trim() || (source?.defaultFlow === flow.id ? 'Иначе' : flow.condition ? 'Условный переход' : flow.type === 'message' ? 'Сообщение' : flow.type === 'association' ? 'Связь' : '');
+  return [name, flow.originalType === 'message' ? 'информационная связь из исходной схемы' : '', flow.return ? 'Возврат' : ''].filter(Boolean).join(' — ');
 }
 function reveal(id: string) {
   const box = data.geometry.shapes[id]; if (!box) return;
@@ -82,7 +82,8 @@ function renderFlows(node: any, direction: 'incoming' | 'outgoing') {
   for (const flow of flows) {
     const otherId = direction === 'incoming' ? flow.source : flow.target;
     const other = named.get(otherId); const row = document.createElement('p'); list.append(row);
-    const label = `${flowName(flow)}: ${other?.name ?? otherId}`;
+    const prefix = flowName(flow);
+    const label = [prefix, other?.name ?? otherId].filter(Boolean).join(': ');
     if (nodeById.has(otherId)) {
       const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
       button.setAttribute('aria-label', `${direction === 'incoming' ? 'Перейти к предыдущему' : 'Перейти к следующему'} блоку: ${label}`);
