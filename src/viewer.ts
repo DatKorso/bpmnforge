@@ -19,18 +19,34 @@ function markStage(id: string | null) {
   overview.setAttribute('aria-pressed', String(id === null));
   for (const button of stages.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.stage === id));
 }
-function setView(bounds: { x: number; y: number; width: number; height: number }, minimumScale = 0) {
+function fitScale(bounds: { width: number; height: number }) {
   const outer = canvas.viewbox().outer;
-  const scale = Math.min(2, Math.max(minimumScale, Math.min((outer.width - 50) / (bounds.width + 60), (outer.height - 50) / (bounds.height + 60))));
+  return Math.min(2, Math.min((outer.width - 50) / (bounds.width + 60), (outer.height - 50) / (bounds.height + 60)));
+}
+function setView(bounds: { x: number; y: number; width: number; height: number }, minimumScale = 0, center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }) {
+  const outer = canvas.viewbox().outer;
+  const fittedScale = fitScale(bounds);
+  const scale = Math.max(minimumScale, fittedScale);
   const width = outer.width / scale, height = outer.height / scale;
-  canvas.viewbox({ x: bounds.x - 30, y: bounds.y - 30, width, height });
+  canvas.viewbox({ x: center.x - width / 2, y: center.y - height / 2, width, height });
   updateZoom();
 }
-function showOverview() { markStage(null); setView(data.geometry.viewport); status.textContent = 'Показана вся схема'; }
+function showOverview() { markStage(null); setView(canvas.viewbox().inner); status.textContent = 'Показана вся схема'; }
+function stageFocus(id: string, bounds: { x: number; y: number; width: number; height: number }) {
+  const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  if (fitScale(bounds) >= 1.2) return center;
+  const shapes = data.model.nodes.filter((node: any) => node.stage === id).map((node: any) => data.geometry.shapes[node.id]).filter(Boolean);
+  return shapes.reduce((nearest: any, shape: any) => {
+    const candidate = { x: shape.x + shape.width / 2, y: shape.y + shape.height / 2 };
+    const distance = (candidate.x - center.x) ** 2 + (candidate.y - center.y) ** 2;
+    return !nearest || distance < nearest.distance ? { ...candidate, distance } : nearest;
+  }, null) ?? center;
+}
 function showStage(id: string) {
   const stage = data.model.stages.find((item: any) => item.id === id);
   if (!stage || !data.geometry.stages[id]) return;
-  markStage(id); setView(data.geometry.stages[id], 1.2); status.textContent = `Этап: ${stage.name}`;
+  const bounds = data.geometry.stages[id];
+  markStage(id); setView(bounds, 1.2, stageFocus(id, bounds)); status.textContent = `Этап: ${stage.name}`;
 }
 function adjustZoom(factor: number, center?: { x: number; y: number }) {
   canvas.zoom(Math.max(0.2, Math.min(3, canvas.zoom() * factor)), center); updateZoom();
@@ -148,7 +164,11 @@ function renderBridges() {
   }
   layer.style.pointerEvents = 'none';
 }
-eventBus.on('element.click', (event: any) => { if (nodeById.has(event.element?.id)) selectNode(event.element.id); });
+let suppressClickUntil = 0;
+eventBus.on('element.click', (event: any) => {
+  if (performance.now() < suppressClickUntil) return;
+  if (nodeById.has(event.element?.id)) selectNode(event.element.id);
+});
 for (const stage of data.model.stages) {
   const button = document.createElement('button'); button.type = 'button'; button.textContent = stage.name;
   button.dataset.stage = stage.id; button.setAttribute('aria-pressed', 'false'); button.addEventListener('click', () => showStage(stage.id)); stages.append(button);
@@ -162,18 +182,25 @@ diagram.addEventListener('wheel', event => {
   event.preventDefault(); const rect = diagram.getBoundingClientRect();
   adjustZoom(event.deltaY < 0 ? 1.12 : 1 / 1.12, { x: event.clientX - rect.left, y: event.clientY - rect.top });
 }, { passive: false });
-let dragging: { x: number; y: number; pointer: number } | null = null;
+let dragging: { x: number; y: number; startX: number; startY: number; pointer: number; moved: boolean } | null = null;
 diagram.addEventListener('pointerdown', event => {
-  if (event.button !== 0 || (event.target as Element).closest('.djs-shape')) return;
-  dragging = { x: event.clientX, y: event.clientY, pointer: event.pointerId };
+  if (event.button !== 0) return;
+  dragging = { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, pointer: event.pointerId, moved: false };
   diagram.setPointerCapture(event.pointerId);
 });
 diagram.addEventListener('pointermove', event => {
   if (!dragging || dragging.pointer !== event.pointerId) return;
+  if (!dragging.moved) {
+    if (Math.hypot(event.clientX - dragging.startX, event.clientY - dragging.startY) < 4) return;
+    dragging.moved = true;
+  }
   canvas.scroll({ dx: event.clientX - dragging.x, dy: event.clientY - dragging.y });
   dragging.x = event.clientX; dragging.y = event.clientY;
 });
-diagram.addEventListener('pointerup', () => { dragging = null; });
+diagram.addEventListener('pointerup', () => {
+  if (dragging?.moved) suppressClickUntil = performance.now() + 250;
+  dragging = null;
+});
 diagram.addEventListener('pointercancel', () => { dragging = null; });
 diagram.addEventListener('keydown', event => {
   if (event.target !== diagram && event.target !== diagram.querySelector('svg')) return;
@@ -188,7 +215,9 @@ diagram.addEventListener('keydown', event => {
 
 viewer.importXML(data.xml).then(({ warnings }: any) => {
   if (warnings.length) throw new Error('BPMN import warnings');
-  wireNodes(); renderBridges(); showOverview(); document.body.dataset.ready = 'true'; status.textContent = 'Схема загружена';
+  wireNodes(); renderBridges();
+  const firstStage = data.model.stages[0]; if (firstStage) showStage(firstStage.id); else showOverview();
+  document.body.dataset.ready = 'true'; status.textContent = 'Схема загружена';
 }).catch(() => { document.body.dataset.error = 'true'; status.textContent = 'Не удалось открыть BPMN'; });
 const list = document.getElementById('documents')!;
 const shownLinks = new Set<string>();
