@@ -9,14 +9,17 @@ const diagram = document.getElementById('bpmn-canvas')!;
 const status = document.getElementById('status')!;
 const stages = document.getElementById('stages')!;
 const overview = document.getElementById('overview') as HTMLButtonElement;
+const fit = document.getElementById('fit') as HTMLButtonElement;
 const zoomValue = document.getElementById('zoom-value')!;
 document.getElementById('title')!.textContent = data.model.name;
+overview.textContent = 'Обзор схемы';
 
 let activeStage: string | null = null;
 function updateZoom() { zoomValue.textContent = `${Math.round(canvas.zoom() * 100)}%`; }
 function markStage(id: string | null) {
   activeStage = id;
   overview.setAttribute('aria-pressed', String(id === null));
+  fit.textContent = id === null ? 'Вписать схему' : 'К началу этапа';
   for (const button of stages.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.stage === id));
 }
 function fitScale(bounds: { width: number; height: number }) {
@@ -31,16 +34,20 @@ function setView(bounds: { x: number; y: number; width: number; height: number }
   canvas.viewbox({ x: center.x - width / 2, y: center.y - height / 2, width, height });
   updateZoom();
 }
-function showOverview() { markStage(null); setView(canvas.viewbox().inner); status.textContent = 'Показана вся схема'; }
+function showOverview() { markStage(null); setView(canvas.viewbox().inner); status.textContent = 'Обзор схемы: выберите этап для чтения'; }
 function stageFocus(id: string, bounds: { x: number; y: number; width: number; height: number }) {
   const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
   if (fitScale(bounds) >= 1.2) return center;
-  const shapes = data.model.nodes.filter((node: any) => node.stage === id).map((node: any) => data.geometry.shapes[node.id]).filter(Boolean);
-  return shapes.reduce((nearest: any, shape: any) => {
-    const candidate = { x: shape.x + shape.width / 2, y: shape.y + shape.height / 2 };
-    const distance = (candidate.x - center.x) ** 2 + (candidate.y - center.y) ** 2;
-    return !nearest || distance < nearest.distance ? { ...candidate, distance } : nearest;
-  }, null) ?? center;
+  const nodes = data.model.nodes.filter((node: any) => node.stage === id && data.geometry.shapes[node.id] && node.type !== 'eventSubProcess');
+  const entries = nodes.filter((node: any) => node.type === 'start' || node.type === 'conditionalStart');
+  const first = (entries.length ? entries : nodes).sort((a: any, b: any) => {
+    const left = data.geometry.shapes[a.id], right = data.geometry.shapes[b.id];
+    return left.x - right.x || left.y - right.y;
+  })[0];
+  if (!first) return center;
+  const shape = data.geometry.shapes[first.id];
+  const visibleWidth = canvas.viewbox().outer.width / 1.2;
+  return { x: shape.x + shape.width / 2 + visibleWidth * 0.38, y: shape.y + shape.height / 2 };
 }
 function showStage(id: string) {
   const stage = data.model.stages.find((item: any) => item.id === id);
@@ -175,7 +182,7 @@ for (const stage of data.model.stages) {
   button.dataset.stage = stage.id; button.setAttribute('aria-pressed', 'false'); button.addEventListener('click', () => showStage(stage.id)); stages.append(button);
 }
 overview.addEventListener('click', showOverview);
-document.getElementById('fit')!.addEventListener('click', () => activeStage ? showStage(activeStage) : showOverview());
+fit.addEventListener('click', () => activeStage ? showStage(activeStage) : showOverview());
 document.getElementById('zoom-in')!.addEventListener('click', () => adjustZoom(1.2));
 document.getElementById('zoom-out')!.addEventListener('click', () => adjustZoom(1 / 1.2));
 eventBus.on('canvas.viewbox.changed', updateZoom);
@@ -219,7 +226,7 @@ viewer.importXML(data.xml).then(({ warnings }: any) => {
   if (warnings.length) throw new Error('BPMN import warnings');
   wireNodes(); renderBridges();
   const firstStage = data.model.stages[0]; if (firstStage) showStage(firstStage.id); else showOverview();
-  document.body.dataset.ready = 'true'; status.textContent = 'Схема загружена';
+  document.body.dataset.ready = 'true';
 }).catch(() => { document.body.dataset.error = 'true'; status.textContent = 'Не удалось открыть BPMN'; });
 const list = document.getElementById('documents')!;
 const shownLinks = new Set<string>();
