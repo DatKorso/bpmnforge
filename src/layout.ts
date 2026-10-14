@@ -1,6 +1,9 @@
 import type { Geometry, ProcessDocument, Bounds, Point, Diagnostic } from './domain.ts';
 import { BplmError } from './domain.ts';
 const CLEARANCE = 14;
+const TASK_TYPES = new Set(['task', 'userTask', 'serviceTask', 'sendTask', 'receiveTask', 'businessRuleTask', 'callActivity']);
+interface Port { point: Point; dx: number; dy: number }
+const routeLength = (route: Point[]) => route.slice(1).reduce((total, point, i) => total + Math.abs(point.x - route[i].x) + Math.abs(point.y - route[i].y), 0);
 const equal = (a: Point, b: Point) => a.x === b.x && a.y === b.y;
 const boxOverlap = (a: Bounds, b: Bounds) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 const insideSegment = (a: Point, b: Point, box: Bounds) => a.y === b.y
@@ -9,7 +12,31 @@ const insideSegment = (a: Point, b: Point, box: Bounds) => a.y === b.y
 const boundary = (p: Point, b: Bounds) => ((p.x === b.x || p.x === b.x + b.width) && p.y >= b.y && p.y <= b.y + b.height) || ((p.y === b.y || p.y === b.y + b.height) && p.x >= b.x && p.x <= b.x + b.width);
 function normalized(points: Point[]): Point[] {
   const unique = points.filter((point, index) => index === 0 || !equal(point, points[index - 1]));
-  return unique.filter((point, index) => index === 0 || index === unique.length - 1 || !((unique[index - 1].x === point.x && point.x === unique[index + 1].x) || (unique[index - 1].y === point.y && point.y === unique[index + 1].y)));
+  return unique.filter((point, index) => {
+    if (index === 0 || index === unique.length - 1) return true;
+    const a = unique[index - 1], b = unique[index + 1];
+    return !((a.x === point.x && point.x === b.x && (point.y - a.y) * (b.y - point.y) >= 0)
+      || (a.y === point.y && point.y === b.y && (point.x - a.x) * (b.x - point.x) >= 0));
+  });
+}
+function attachmentPorts(box: Bounds, opposite: Bounds, preferred: Point, flexible: boolean): Port[] {
+  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const clampX = (x: number) => Math.max(box.x + CLEARANCE, Math.min(box.x + box.width - CLEARANCE, x));
+  const clampY = (y: number) => Math.max(box.y + CLEARANCE, Math.min(box.y + box.height - CLEARANCE, y));
+  const ports: Port[] = [];
+  const add = (dx: number, dy: number, x: number, y: number) => {
+    if (flexible && (dx ? box.height : box.width) < CLEARANCE * 2) return;
+    const point = { x: dx ? (dx > 0 ? box.x + box.width : box.x) : flexible ? clampX(x) : center.x,
+      y: dy ? (dy > 0 ? box.y + box.height : box.y) : flexible ? clampY(y) : center.y };
+    if (!ports.some(port => equal(port.point, point))) ports.push({ point, dx, dy });
+  };
+  if (preferred.x === box.x || preferred.x === box.x + box.width) add(preferred.x === box.x ? -1 : 1, 0, preferred.x, preferred.y);
+  else add(0, preferred.y === box.y ? -1 : 1, preferred.x, preferred.y);
+  for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+    add(dx, dy, center.x, center.y);
+    if (flexible) add(dx, dy, opposite.x + opposite.width / 2, opposite.y + opposite.height / 2);
+  }
+  return ports;
 }
 function interaction(a: Point, b: Point, c: Point, d: Point): { kind: 'overlap' | 'crossing' | 'touch'; point: Point } | null {
   if (a.y === b.y && c.y === d.y && a.y === c.y) {
@@ -61,7 +88,7 @@ export function layoutProcess(model: ProcessDocument): Geometry {
       if (lane.id) shapes[lane.id] = { x: 70, y: top, width: width - 30, height };
       for (const item of members) {
         const annotation = 'text' in item, type = 'type' in item ? item.type : 'annotation';
-        const taskLike = ['task', 'userTask', 'serviceTask', 'sendTask', 'receiveTask', 'businessRuleTask', 'callActivity'].includes(type);
+        const taskLike = TASK_TYPES.has(type);
         const size = annotation ? { width: 180, height: Math.max(70, Math.ceil(item.text.length / 22) * 18 + 24) } : taskLike ? { width: 180, height: Math.max(80, Math.ceil(item.name.length / 22) * 18 + 24) } : type === 'xor' || type === 'and' ? { width: 50, height: 50 } : { width: 36, height: 36 };
         if (size.height > 400) fail('LABEL_SIZE', item.id, 'Text annotation exceeds a grid cell; split the annotation');
         const cell = cells.get(item.id)!, centerY = top + 180 + cell.row * 540;
@@ -124,7 +151,7 @@ export function layoutProcess(model: ProcessDocument): Geometry {
       if (side === 'source' && direction < 0 && flow.type === 'sequence') return { x: box.x + box.width, y: box.y + box.height / 2 + offset };
       if (side === 'target' && direction < 0 && labels[flow.target]) return { x: box.x, y: box.y + box.height / 2 + offset };
       const desiredX = box.width > 500 ? opposite.x + opposite.width / 2 : box.x + box.width / 2;
-      return { x: Math.max(box.x + 12, Math.min(box.x + box.width - 12, desiredX + (direction > 0 ? 18 : -18) + offset)), y: side === 'source' ? (direction > 0 ? box.y + box.height : box.y) : (direction > 0 ? box.y : box.y + box.height) };
+      return { x: Math.max(box.x + CLEARANCE, Math.min(box.x + box.width - CLEARANCE, desiredX + (direction > 0 ? 18 : -18) + offset)), y: side === 'source' ? (direction > 0 ? box.y + box.height : box.y) : (direction > 0 ? box.y : box.y + box.height) };
     }
     return { x: side === 'source' ? box.x + box.width : box.x, y: box.y + box.height / 2 + offset };
   };
@@ -134,6 +161,10 @@ export function layoutProcess(model: ProcessDocument): Geometry {
       const a = route[i - 1], b = route[i];
       if (a.x !== b.x && a.y !== b.y) { problems.push({ code: 'ROUTE_ORTHOGONAL', id, point: a, message: 'Route segment is not orthogonal', severity: 'error' }); continue; }
       if (equal(a, b)) { problems.push({ code: 'ROUTE_ZERO_LENGTH', id, point: a, message: 'Route segment has zero length', severity: 'error' }); continue; }
+      if (i > 1) {
+        const previous = route[i - 2];
+        if ((a.x - previous.x) * (b.x - a.x) + (a.y - previous.y) * (b.y - a.y) < 0) problems.push({ code: 'ROUTE_SELF_INTERSECTION', id, point: a, message: 'Route doubles back on itself', severity: 'error' });
+      }
       const flow = model.flows.find(item => item.id === id);
       for (const obstacle of obstacles()) {
         const parent = model.nodes.find(node => node.id === obstacle.id && node.type === 'eventSubProcess');
@@ -176,9 +207,26 @@ export function layoutProcess(model: ProcessDocument): Geometry {
       if (!boundary(flow.route[0], a) || !boundary(flow.route.at(-1)!, b)) { errors.push({ code: 'ROUTE_ENDPOINT', id: flow.id, point: flow.route[0], relatedIds: [flow.source, flow.target], message: 'Route hint must start and end on endpoint boundaries', severity: 'error' }); continue; }
       candidates.push(flow.route.map(point => ({ ...point })));
     } else {
-      const outside = (point: Point, box: Bounds): Point => point.x === box.x + box.width ? { x: point.x + 26, y: point.y } : point.x === box.x ? { x: point.x - 26, y: point.y } : point.y === box.y + box.height ? { x: point.x, y: point.y + 26 } : { x: point.x, y: point.y - 26 };
-      const s = outside(start, a), t = outside(end, b);
-      const wrap = (middle: Point[]) => [start, s, ...middle, t, end];
+      const sourceType = model.nodes.find(node => node.id === flow.source)?.type;
+      const targetType = model.nodes.find(node => node.id === flow.target)?.type;
+      const sources = attachmentPorts(a, b, start, !sourceType || sourceType === 'eventSubProcess' || TASK_TYPES.has(sourceType));
+      const targets = attachmentPorts(b, a, end, !targetType || targetType === 'eventSubProcess' || TASK_TYPES.has(targetType));
+      if (!sources.length || !targets.length) { fail('ROUTE_UNSATISFIABLE', flow.id, 'Endpoint has no attachment side with sufficient corner clearance'); continue; }
+      const outside = (port: Port): Point => ({ x: port.point.x + port.dx * 26, y: port.point.y + port.dy * 26 });
+      if (!flow.return && flow.source !== flow.target) for (const source of sources) for (const target of targets) {
+        const s = outside(source), t = outside(target);
+        const wrap = (middle: Point[]) => [source.point, s, ...middle, t, target.point];
+        // Facing ports may connect directly even when the 26 px stubs would overlap.
+        const dx = target.point.x - source.point.x, dy = target.point.y - source.point.y;
+        if ((dx === 0 || dy === 0) && dx * source.dx + dy * source.dy > 0 && dx * target.dx + dy * target.dy < 0) candidates.push([source.point, target.point]);
+        candidates.push(wrap([{ x: t.x, y: s.y }]), wrap([{ x: s.x, y: t.y }]));
+        candidates.push(wrap([{ x: (s.x + t.x) / 2, y: s.y }, { x: (s.x + t.x) / 2, y: t.y }]));
+        candidates.push(wrap([{ x: s.x, y: (s.y + t.y) / 2 }, { x: t.x, y: (s.y + t.y) / 2 }]));
+      }
+      // Keep the existing corridor search as a bounded fallback for obstacles,
+      // parallel links and returns, using valid points on gateways and events.
+      const s = outside(sources[0]), t = outside(targets[0]);
+      const wrap = (middle: Point[]) => [sources[0].point, s, ...middle, t, targets[0].point];
       if (s.y === t.y || s.x === t.x) candidates.push(wrap([]));
       const blocked = obstacles();
       const xs = [...new Set([(s.x + t.x) / 2, s.x, t.x, ...blocked.flatMap(({ box }) => [box.x - CLEARANCE, box.x + box.width + CLEARANCE])])].filter(x => x >= 0).sort((x, y) => Math.abs(x - (s.x + t.x) / 2) - Math.abs(y - (s.x + t.x) / 2)).slice(0, 24);
@@ -194,8 +242,7 @@ export function layoutProcess(model: ProcessDocument): Geometry {
     }
     let chosen: Point[] | null = null, chosenLabel: Bounds | null = null, accepted: Geometry['crossings'] = [], nearest: Diagnostic[] = [];
     const sortedCandidates = (flow.route ? candidates : candidates.map(normalized)).filter(route => route.length >= 2).sort((u, v) => {
-      const cost = (route: Point[]) => route.slice(1).reduce((total, p, i) => total + Math.abs(p.x - route[i].x) + Math.abs(p.y - route[i].y), 0) + route.length * 14;
-      return cost(u) - cost(v);
+      return u.length - v.length || routeLength(u) - routeLength(v);
     });
     for (const route of sortedCandidates) {
       const result = checkRoute(flow.id, route);
