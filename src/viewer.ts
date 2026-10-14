@@ -1,6 +1,8 @@
 import Viewer from 'bpmn-js/lib/Viewer.js';
 
 const data = JSON.parse(document.getElementById('bplm-data')!.textContent!);
+const unavailableDocuments = new Set<string>((data.unavailableDocuments ?? []).map((item: { id: string; href: string }) => `${item.id}\u0000${item.href}`));
+function documentUnavailable(ownerId: string, href: string) { return unavailableDocuments.has(`${ownerId}\u0000${href}`); }
 const viewer = new Viewer({ container: '#bpmn-canvas' });
 (window as any).bplmViewer = viewer;
 const canvas: any = viewer.get('canvas');
@@ -146,7 +148,11 @@ function selectNode(id: string, focus = false) {
   renderFlows(node, 'incoming'); renderFlows(node, 'outgoing');
   if (node.links?.length) {
     addText(details, 'h3', 'Документы');
-    for (const link of node.links) { const row = document.createElement('p'); const a = document.createElement('a'); a.textContent = link.name; a.href = link.href; a.rel = 'noopener noreferrer'; row.append(a); details.append(row); }
+    for (const link of node.links) {
+      const row = document.createElement('p'); details.append(row);
+      if (documentUnavailable(node.id, link.href)) addText(row, 'span', `${link.name} — файл недоступен`, 'document-unavailable');
+      else { const a = document.createElement('a'); a.textContent = link.name; a.href = link.href; a.rel = 'noopener noreferrer'; row.append(a); }
+    }
   }
   details.scrollTop = 0;
   status.textContent = `Выбран блок: ${node.name}`;
@@ -249,9 +255,15 @@ viewer.importXML(data.xml).then(({ warnings }: any) => {
 }).catch(() => { document.body.dataset.error = 'true'; status.textContent = 'Не удалось открыть BPMN'; });
 const list = document.getElementById('documents')!;
 const shownLinks = new Set<string>();
+const missingNames: string[] = [];
 for (const item of [data.model, ...data.model.stages, ...data.model.processes, ...data.model.pools, ...data.model.lanes, ...data.model.nodes, ...(data.model.annotations ?? [])]) for (const link of item.links ?? []) {
   const key = `${link.name}\u0000${link.href}`;
   if (shownLinks.has(key)) continue;
   shownLinks.add(key);
+  if (documentUnavailable(item.id, link.href)) { missingNames.push(link.name); continue; }
   const a = document.createElement('a'); a.textContent = link.name; a.setAttribute('href', link.href); a.rel = 'noopener noreferrer'; list.append(a);
+}
+if (missingNames.length) {
+  const warning = addText(list, 'span', `Недоступные документы: ${missingNames.length}`, 'document-warning');
+  warning.setAttribute('title', missingNames.join('; '));
 }

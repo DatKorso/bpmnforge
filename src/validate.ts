@@ -127,7 +127,7 @@ export async function validateProcess(input: unknown, options: { htmlPath: strin
     }
     if (/^[a-z][a-z0-9+.-]*:/i.test(decoded) || decoded.startsWith('/') || decoded.split(/[/?#]/).includes('..')) { report('UNSAFE_URL', item.id, 'Only HTTPS and relative document links are supported'); continue; }
     const local = decoded.split(/[?#]/)[0]; if (!local) continue;
-    try { const info = await stat(resolve(dirname(options.htmlPath), local)); if (!info.isFile()) throw new Error(); } catch { report('MISSING_DOCUMENT', item.id, `Missing document: ${href}`, 'warning'); }
+    try { const info = await stat(resolve(dirname(options.htmlPath), local)); if (!info.isFile()) throw new Error(); } catch { diagnostics.push({ code: 'MISSING_DOCUMENT', id: item.id, href, message: `Missing document: ${href}`, severity: 'warning' }); }
   }
   finish();
   return { model, diagnostics };

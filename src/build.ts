@@ -36,7 +36,9 @@ export async function prepareProcess(options: BuildOptions) {
   return { ...paths, model, diagnostics, geometry };
 }
 export async function buildProcess(options: BuildOptions) {
-  const result = await prepareProcess(options); const xml = await exportBpmn(result.model, result.geometry); const html = await renderStandaloneHtml(result.model, result.geometry, xml);
+  const result = await prepareProcess(options); const xml = await exportBpmn(result.model, result.geometry);
+  const unavailableDocuments = result.diagnostics.filter(item => item.code === 'MISSING_DOCUMENT' && item.href).map(item => ({ id: item.id, href: item.href! }));
+  const html = await renderStandaloneHtml(result.model, result.geometry, xml, unavailableDocuments);
   await publishArtifacts([{ path: result.htmlPath, content: html }, { path: result.bpmnPath, content: xml }]);
   return result;
 }
