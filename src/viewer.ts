@@ -8,7 +8,10 @@ const eventBus: any = viewer.get('eventBus');
 const diagram = document.getElementById('bpmn-canvas')!;
 const status = document.getElementById('status')!;
 const stages = document.getElementById('stages')!;
+const previousStages = document.getElementById('stages-prev') as HTMLButtonElement;
+const nextStages = document.getElementById('stages-next') as HTMLButtonElement;
 const overview = document.getElementById('overview') as HTMLButtonElement;
+const overviewNote = document.getElementById('overview-note')!;
 const fit = document.getElementById('fit') as HTMLButtonElement;
 const zoomValue = document.getElementById('zoom-value')!;
 document.getElementById('title')!.textContent = data.model.name;
@@ -19,6 +22,7 @@ function updateZoom() { zoomValue.textContent = `${Math.round(canvas.zoom() * 10
 function markStage(id: string | null) {
   activeStage = id;
   overview.setAttribute('aria-pressed', String(id === null));
+  overviewNote.hidden = id !== null;
   fit.textContent = id === null ? 'Вписать схему' : 'К началу этапа';
   for (const button of stages.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.stage === id));
 }
@@ -111,24 +115,10 @@ function selectNode(id: string, focus = false) {
   for (const flow of data.model.flows.filter((item: any) => item.source === id || item.target === id)) canvas.addMarker(flow.id, 'bplm-related');
   details.replaceChildren();
   addText(details, 'h2', node.name);
-  addText(details, 'p', `Тип: ${types[node.type] ?? node.type}`);
-  addText(details, 'p', `Процесс: ${named.get(node.process)?.name ?? node.process}`);
-  const pool = data.model.pools.find((item: any) => item.process === node.process);
-  if (pool) addText(details, 'p', `Участник: ${pool.name}`);
-  if (node.lane) addText(details, 'p', `Исполнитель: ${named.get(node.lane)?.name ?? node.lane}`);
   if (node.parent) {
     const parent = nodeById.get(node.parent);
     const button = document.createElement('button'); button.type = 'button'; button.textContent = `Подпроцесс: ${parent?.name ?? node.parent}`;
     button.addEventListener('click', () => selectNode(node.parent, true)); details.append(button);
-  }
-  addText(details, 'p', `Этап: ${data.model.stages.find((item: any) => item.id === node.stage)?.name ?? node.stage}`);
-  addText(details, 'h3', 'Описание'); addText(details, 'p', node.description || 'Описание не задано');
-  if (node.type === 'eventSubProcess') {
-    addText(details, 'h3', 'Внутренние шаги');
-    for (const child of data.model.nodes.filter((item: any) => item.parent === node.id)) {
-      const button = document.createElement('button'); button.type = 'button'; button.textContent = child.name;
-      button.addEventListener('click', () => selectNode(child.id, true)); details.append(button);
-    }
   }
   if (node.type === 'callActivity') {
     const start = data.model.nodes.find((item: any) => item.process === node.calledElement && item.type === 'start' && !item.parent);
@@ -137,11 +127,28 @@ function selectNode(id: string, focus = false) {
       button.addEventListener('click', () => selectNode(start.id, true)); details.append(button);
     }
   }
+  const meta = document.createElement('dl'); meta.className = 'detail-meta'; meta.setAttribute('aria-label', 'Контекст'); details.append(meta);
+  const addMeta = (label: string, value: string) => { addText(meta, 'dt', label); addText(meta, 'dd', value); };
+  addMeta('Тип', types[node.type] ?? node.type);
+  addMeta('Процесс', named.get(node.process)?.name ?? node.process);
+  const pool = data.model.pools.find((item: any) => item.process === node.process);
+  if (pool) addMeta('Участник', pool.name);
+  if (node.lane) addMeta('Исполнитель', named.get(node.lane)?.name ?? node.lane);
+  addMeta('Этап', data.model.stages.find((item: any) => item.id === node.stage)?.name ?? node.stage);
+  addText(details, 'h3', 'Описание'); addText(details, 'p', node.description || 'Описание не задано');
+  if (node.type === 'eventSubProcess') {
+    addText(details, 'h3', 'Внутренние шаги');
+    for (const child of data.model.nodes.filter((item: any) => item.parent === node.id)) {
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = child.name;
+      button.addEventListener('click', () => selectNode(child.id, true)); details.append(button);
+    }
+  }
   renderFlows(node, 'incoming'); renderFlows(node, 'outgoing');
   if (node.links?.length) {
     addText(details, 'h3', 'Документы');
     for (const link of node.links) { const row = document.createElement('p'); const a = document.createElement('a'); a.textContent = link.name; a.href = link.href; a.rel = 'noopener noreferrer'; row.append(a); details.append(row); }
   }
+  details.scrollTop = 0;
   status.textContent = `Выбран блок: ${node.name}`;
   if (focus) registry.getGraphics(id)?.focus({ preventScroll: true });
 }
@@ -181,6 +188,18 @@ for (const stage of data.model.stages) {
   const button = document.createElement('button'); button.type = 'button'; button.textContent = stage.name;
   button.dataset.stage = stage.id; button.setAttribute('aria-pressed', 'false'); button.addEventListener('click', () => showStage(stage.id)); stages.append(button);
 }
+function updateStageScroll() {
+  previousStages.hidden = nextStages.hidden = true;
+  const overflow = stages.scrollWidth > stages.clientWidth + 1;
+  previousStages.hidden = nextStages.hidden = !overflow;
+  previousStages.disabled = stages.scrollLeft <= 1;
+  nextStages.disabled = stages.scrollLeft + stages.clientWidth >= stages.scrollWidth - 1;
+}
+previousStages.addEventListener('click', () => stages.scrollBy({ left: -300, behavior: 'smooth' }));
+nextStages.addEventListener('click', () => stages.scrollBy({ left: 300, behavior: 'smooth' }));
+stages.addEventListener('scroll', updateStageScroll);
+window.addEventListener('resize', updateStageScroll);
+requestAnimationFrame(updateStageScroll);
 overview.addEventListener('click', showOverview);
 fit.addEventListener('click', () => activeStage ? showStage(activeStage) : showOverview());
 document.getElementById('zoom-in')!.addEventListener('click', () => adjustZoom(1.2));
