@@ -164,9 +164,9 @@ function renderBridges() {
   }
   layer.style.pointerEvents = 'none';
 }
-let suppressClickUntil = 0;
+let suppressClick = false;
 eventBus.on('element.click', (event: any) => {
-  if (performance.now() < suppressClickUntil) return;
+  if (suppressClick) return;
   if (nodeById.has(event.element?.id)) selectNode(event.element.id);
 });
 for (const stage of data.model.stages) {
@@ -185,20 +185,21 @@ diagram.addEventListener('wheel', event => {
 let dragging: { x: number; y: number; startX: number; startY: number; pointer: number; moved: boolean } | null = null;
 diagram.addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
+  suppressClick = false;
   dragging = { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, pointer: event.pointerId, moved: false };
-  diagram.setPointerCapture(event.pointerId);
 });
 diagram.addEventListener('pointermove', event => {
   if (!dragging || dragging.pointer !== event.pointerId) return;
   if (!dragging.moved) {
     if (Math.hypot(event.clientX - dragging.startX, event.clientY - dragging.startY) < 4) return;
     dragging.moved = true;
+    diagram.setPointerCapture(event.pointerId);
   }
   canvas.scroll({ dx: event.clientX - dragging.x, dy: event.clientY - dragging.y });
   dragging.x = event.clientX; dragging.y = event.clientY;
 });
 diagram.addEventListener('pointerup', () => {
-  if (dragging?.moved) suppressClickUntil = performance.now() + 250;
+  if (dragging?.moved) suppressClick = true;
   dragging = null;
 });
 diagram.addEventListener('pointercancel', () => { dragging = null; });
