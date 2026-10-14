@@ -10,6 +10,16 @@ const insideSegment = (a: Point, b: Point, box: Bounds) => a.y === b.y
   ? a.y > box.y && a.y < box.y + box.height && Math.max(a.x, b.x) > box.x && Math.min(a.x, b.x) < box.x + box.width
   : a.x > box.x && a.x < box.x + box.width && Math.max(a.y, b.y) > box.y && Math.min(a.y, b.y) < box.y + box.height;
 const boundary = (p: Point, b: Bounds) => ((p.x === b.x || p.x === b.x + b.width) && p.y >= b.y && p.y <= b.y + b.height) || ((p.y === b.y || p.y === b.y + b.height) && p.x >= b.x && p.x <= b.x + b.width);
+const diamondBoundary = (p: Point, b: Bounds) => Math.abs(Math.abs((p.x - b.x - b.width / 2) / (b.width / 2)) + Math.abs((p.y - b.y - b.height / 2) / (b.height / 2)) - 1) < 1e-9;
+function insideDiamondSegment(a: Point, b: Point, box: Bounds): boolean {
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  if (a.y === b.y) {
+    const half = box.width / 2 * (1 - Math.abs((a.y - cy) / (box.height / 2)));
+    return half > 0 && Math.max(a.x, b.x) > cx - half + 1e-9 && Math.min(a.x, b.x) < cx + half - 1e-9;
+  }
+  const half = box.height / 2 * (1 - Math.abs((a.x - cx) / (box.width / 2)));
+  return half > 0 && Math.max(a.y, b.y) > cy - half + 1e-9 && Math.min(a.y, b.y) < cy + half - 1e-9;
+}
 function normalized(points: Point[]): Point[] {
   const unique = points.filter((point, index) => index === 0 || !equal(point, points[index - 1]));
   return unique.filter((point, index) => {
@@ -19,15 +29,24 @@ function normalized(points: Point[]): Point[] {
       || (a.y === point.y && point.y === b.y && (point.x - a.x) * (b.x - point.x) >= 0));
   });
 }
-function attachmentPorts(box: Bounds, opposite: Bounds, preferred: Point, flexible: boolean): Port[] {
+function attachmentPorts(box: Bounds, opposite: Bounds, preferred: Point, flexible: boolean, diamond = false, spread = 0): Port[] {
   const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   const clampX = (x: number) => Math.max(box.x + CLEARANCE, Math.min(box.x + box.width - CLEARANCE, x));
   const clampY = (y: number) => Math.max(box.y + CLEARANCE, Math.min(box.y + box.height - CLEARANCE, y));
   const ports: Port[] = [];
   const add = (dx: number, dy: number, x: number, y: number) => {
     if (flexible && (dx ? box.height : box.width) < CLEARANCE * 2) return;
-    const point = { x: dx ? (dx > 0 ? box.x + box.width : box.x) : flexible ? clampX(x) : center.x,
+    let point = { x: dx ? (dx > 0 ? box.x + box.width : box.x) : flexible ? clampX(x) : center.x,
       y: dy ? (dy > 0 ? box.y + box.height : box.y) : flexible ? clampY(y) : center.y };
+    if (diamond) {
+      if (dx) {
+        const yOnSide = Math.max(center.y - box.height * 0.35, Math.min(center.y + box.height * 0.35, y));
+        point = { x: center.x + dx * box.width / 2 * (1 - Math.abs((yOnSide - center.y) / (box.height / 2))), y: yOnSide };
+      } else {
+        const xOnSide = Math.max(center.x - box.width * 0.35, Math.min(center.x + box.width * 0.35, x));
+        point = { x: xOnSide, y: center.y + dy * box.height / 2 * (1 - Math.abs((xOnSide - center.x) / (box.width / 2))) };
+      }
+    }
     if (!ports.some(port => equal(port.point, point))) ports.push({ point, dx, dy });
   };
   if (preferred.x === box.x || preferred.x === box.x + box.width) add(preferred.x === box.x ? -1 : 1, 0, preferred.x, preferred.y);
@@ -35,6 +54,10 @@ function attachmentPorts(box: Bounds, opposite: Bounds, preferred: Point, flexib
   for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
     add(dx, dy, center.x, center.y);
     if (flexible) add(dx, dy, opposite.x + opposite.width / 2, opposite.y + opposite.height / 2);
+    if (diamond) {
+      add(dx, dy, center.x + spread, center.y + spread);
+      add(dx, dy, opposite.x + opposite.width / 2, opposite.y + opposite.height / 2);
+    }
   }
   return ports;
 }
@@ -62,6 +85,8 @@ export function layoutProcess(model: ProcessDocument): Geometry {
   const cells = new Map<string, { column: number; row: number }>(), occupied = new Map<string, string>();
   const cellConflicts: { id: string; otherId: string }[] = [];
   const items = [...model.nodes, ...(model.annotations ?? [])];
+  const nodeTypes = new Map(model.nodes.map(node => [node.id, node.type]));
+  const isGateway = (id: string) => nodeTypes.get(id) === 'xor' || nodeTypes.get(id) === 'and';
   const counts = new Map<string, number>();
   for (const item of items) {
     const key = `${item.process}/${item.lane ?? ''}/${item.stage}/${item.row ?? 0}`;
@@ -126,7 +151,10 @@ export function layoutProcess(model: ProcessDocument): Geometry {
       errors.push({ code: 'SUBPROCESS_BOUNDS', id: node.id, relatedIds: [node.parent], bounds: child, message: 'Child shape must fit inside its event subprocess', severity: 'error' });
     }
   }
-  const obstacles = () => [...Object.entries(shapes).filter(([id]) => itemIds.has(id)), ...Object.entries(labels)].map(([id, box]) => ({ id, box }));
+  const obstacles = () => [
+    ...Object.entries(shapes).filter(([id]) => itemIds.has(id)).map(([id, box]) => ({ id, box, diamond: isGateway(id) })),
+    ...Object.entries(labels).map(([id, box]) => ({ id, box, diamond: false }))
+  ];
   const shapeEntries = Object.entries(shapes).filter(([id]) => itemIds.has(id));
   for (let i = 0; i < shapeEntries.length; i++) for (let j = i + 1; j < shapeEntries.length; j++) {
     const left = model.nodes.find(node => node.id === shapeEntries[i][0]), right = model.nodes.find(node => node.id === shapeEntries[j][0]);
@@ -169,7 +197,7 @@ export function layoutProcess(model: ProcessDocument): Geometry {
       for (const obstacle of obstacles()) {
         const parent = model.nodes.find(node => node.id === obstacle.id && node.type === 'eventSubProcess');
         if (parent && flow && [flow.source, flow.target].every(endpoint => model.nodes.some(node => node.id === endpoint && node.parent === parent.id))) continue;
-        if (insideSegment(a, b, obstacle.box)) problems.push({ code: 'ROUTE_OBSTACLE', id, relatedIds: [obstacle.id], point: a.x === b.x ? { x: a.x, y: Math.max(Math.min(a.y, b.y), obstacle.box.y) } : { x: Math.max(Math.min(a.x, b.x), obstacle.box.x), y: a.y }, bounds: obstacle.box, message: `Route intersects ${obstacle.id}`, severity: 'error' });
+        if (obstacle.diamond ? insideDiamondSegment(a, b, obstacle.box) : insideSegment(a, b, obstacle.box)) problems.push({ code: 'ROUTE_OBSTACLE', id, relatedIds: [obstacle.id], point: a.x === b.x ? { x: a.x, y: Math.max(Math.min(a.y, b.y), obstacle.box.y) } : { x: Math.max(Math.min(a.x, b.x), obstacle.box.x), y: a.y }, bounds: obstacle.box, message: `Route intersects ${obstacle.id}`, severity: 'error' });
       }
       for (const [otherId, otherRoute] of Object.entries(edges)) for (let j = 1; j < otherRoute.length; j++) {
         const contact = interaction(a, b, otherRoute[j - 1], otherRoute[j]); if (!contact) continue;
@@ -205,13 +233,17 @@ export function layoutProcess(model: ProcessDocument): Geometry {
     const candidates: Point[][] = [];
     let extraCorridors: (() => void) | undefined;
     if (flow.route) {
-      if (!boundary(flow.route[0], a) || !boundary(flow.route.at(-1)!, b)) { errors.push({ code: 'ROUTE_ENDPOINT', id: flow.id, point: flow.route[0], relatedIds: [flow.source, flow.target], message: 'Route hint must start and end on endpoint boundaries', severity: 'error' }); continue; }
+      const invalid = ([[flow.source, flow.route[0], a], [flow.target, flow.route.at(-1)!, b]] as const).find(([id, point, box]) => !(isGateway(id) ? diamondBoundary(point, box) : boundary(point, box)));
+      if (invalid) { errors.push({ code: isGateway(invalid[0]) ? 'ROUTE_GATEWAY_PORT' : 'ROUTE_ENDPOINT', id: flow.id, relatedIds: [invalid[0]], point: invalid[1], message: 'Route hint must start and end on the actual endpoint contour', severity: 'error' }); continue; }
       candidates.push(flow.route.map(point => ({ ...point })));
     } else {
-      const sourceType = model.nodes.find(node => node.id === flow.source)?.type;
-      const targetType = model.nodes.find(node => node.id === flow.target)?.type;
-      const sources = attachmentPorts(a, b, start, !sourceType || sourceType === 'eventSubProcess' || TASK_TYPES.has(sourceType));
-      const targets = attachmentPorts(b, a, end, !targetType || targetType === 'eventSubProcess' || TASK_TYPES.has(targetType));
+      const sourceType = nodeTypes.get(flow.source), targetType = nodeTypes.get(flow.target);
+      const spread = (id: string, box: Bounds) => {
+        const connections = sortedFlows.filter(item => item.source === id || item.target === id);
+        return (connections.findIndex(item => item.id === flow.id) - (connections.length - 1) / 2) * Math.min(16, Math.min(box.width, box.height) * 0.65 / Math.max(1, connections.length));
+      };
+      const sources = attachmentPorts(a, b, start, !sourceType || sourceType === 'eventSubProcess' || TASK_TYPES.has(sourceType), isGateway(flow.source), spread(flow.source, a));
+      const targets = attachmentPorts(b, a, end, !targetType || targetType === 'eventSubProcess' || TASK_TYPES.has(targetType), isGateway(flow.target), spread(flow.target, b));
       if (!sources.length || !targets.length) { fail('ROUTE_UNSATISFIABLE', flow.id, 'Endpoint has no attachment side with sufficient corner clearance'); continue; }
       const outside = (port: Port): Point => ({ x: port.point.x + port.dx * 26, y: port.point.y + port.dy * 26 });
       if (!flow.return && flow.source !== flow.target) for (const source of sources) for (const target of targets) {
