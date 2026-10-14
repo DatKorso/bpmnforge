@@ -203,6 +203,7 @@ export function layoutProcess(model: ProcessDocument): Geometry {
     const start = port(flow, 'source', a), end = port(flow, 'target', b);
     const title = flow.name ?? flow.condition ?? (model.nodes.some(node => node.defaultFlow === flow.id) ? 'Иначе' : '');
     const candidates: Point[][] = [];
+    let extraCorridors: (() => void) | undefined;
     if (flow.route) {
       if (!boundary(flow.route[0], a) || !boundary(flow.route.at(-1)!, b)) { errors.push({ code: 'ROUTE_ENDPOINT', id: flow.id, point: flow.route[0], relatedIds: [flow.source, flow.target], message: 'Route hint must start and end on endpoint boundaries', severity: 'error' }); continue; }
       candidates.push(flow.route.map(point => ({ ...point })));
@@ -225,31 +226,46 @@ export function layoutProcess(model: ProcessDocument): Geometry {
       }
       // Keep the existing corridor search as a bounded fallback for obstacles,
       // parallel links and returns, using valid points on gateways and events.
-      const s = outside(sources[0]), t = outside(targets[0]);
-      const wrap = (middle: Point[]) => [sources[0].point, s, ...middle, t, targets[0].point];
-      if (s.y === t.y || s.x === t.x) candidates.push(wrap([]));
-      const blocked = obstacles();
-      const xs = [...new Set([(s.x + t.x) / 2, s.x, t.x, ...blocked.flatMap(({ box }) => [box.x - CLEARANCE, box.x + box.width + CLEARANCE])])].filter(x => x >= 0).sort((x, y) => Math.abs(x - (s.x + t.x) / 2) - Math.abs(y - (s.x + t.x) / 2)).slice(0, 24);
-      const topRoute = Math.max(8, Math.min(...blocked.map(({ box }) => box.y)) - 32 - Object.keys(edges).length * 16);
-      const bottomRoute = Math.max(...blocked.map(({ box }) => box.y + box.height)) + 32 + Object.keys(edges).length * 16;
-      const ys = [...new Set([(s.y + t.y) / 2, topRoute, bottomRoute, s.y, t.y, ...blocked.flatMap(({ box }) => [box.y - CLEARANCE, box.y + box.height + CLEARANCE])])].filter(y => y >= 0).sort((y, z) => Math.abs(y - (s.y + t.y) / 2) - Math.abs(z - (s.y + t.y) / 2)).slice(0, 28);
-      candidates.push(wrap([{ x: t.x, y: s.y }])); candidates.push(wrap([{ x: s.x, y: t.y }]));
-      for (const x of xs) candidates.push(wrap([{ x, y: s.y }, { x, y: t.y }]));
-      for (const y of ys) candidates.push(wrap([{ x: s.x, y }, { x: t.x, y }]));
-      const starts = [s.x, ...xs.filter(x => Math.abs(x - s.x) < 120)].slice(0, 6);
-      const ends = [t.x, ...xs.filter(x => Math.abs(x - t.x) < 120)].slice(0, 6);
-      for (const y of [topRoute, bottomRoute, ...ys]) for (const x1 of starts) for (const x2 of ends) candidates.push(wrap([{ x: x1, y: s.y }, { x: x1, y }, { x: x2, y }, { x: x2, y: t.y }]));
+      const addCorridors = (source: Port, target: Port) => {
+        const s = outside(source), t = outside(target);
+        const wrap = (middle: Point[]) => [source.point, s, ...middle, t, target.point];
+        if (s.y === t.y || s.x === t.x) candidates.push(wrap([]));
+        const blocked = obstacles();
+        const xs = [...new Set([(s.x + t.x) / 2, s.x, t.x, ...blocked.flatMap(({ box }) => [box.x - CLEARANCE, box.x + box.width + CLEARANCE])])].filter(x => x >= 0).sort((x, y) => Math.abs(x - (s.x + t.x) / 2) - Math.abs(y - (s.x + t.x) / 2)).slice(0, 24);
+        const topRoute = Math.max(8, Math.min(...blocked.map(({ box }) => box.y)) - 32 - Object.keys(edges).length * 16);
+        const bottomRoute = Math.max(...blocked.map(({ box }) => box.y + box.height)) + 32 + Object.keys(edges).length * 16;
+        const ys = [...new Set([(s.y + t.y) / 2, topRoute, bottomRoute, s.y, t.y, ...blocked.flatMap(({ box }) => [box.y - CLEARANCE, box.y + box.height + CLEARANCE])])].filter(y => y >= 0).sort((y, z) => Math.abs(y - (s.y + t.y) / 2) - Math.abs(z - (s.y + t.y) / 2)).slice(0, 28);
+        candidates.push(wrap([{ x: t.x, y: s.y }])); candidates.push(wrap([{ x: s.x, y: t.y }]));
+        for (const x of xs) candidates.push(wrap([{ x, y: s.y }, { x, y: t.y }]));
+        for (const y of ys) candidates.push(wrap([{ x: s.x, y }, { x: t.x, y }]));
+        const starts = [s.x, ...xs.filter(x => Math.abs(x - s.x) < 120)].slice(0, 6);
+        const ends = [t.x, ...xs.filter(x => Math.abs(x - t.x) < 120)].slice(0, 6);
+        for (const y of [topRoute, bottomRoute, ...ys]) for (const x1 of starts) for (const x2 of ends) candidates.push(wrap([{ x: x1, y: s.y }, { x: x1, y }, { x: x2, y }, { x: x2, y: t.y }]));
+      };
+      addCorridors(sources[0], targets[0]);
+      extraCorridors = () => {
+        const centered = (port: Port, box: Bounds) => port.dx ? port.point.y === box.y + box.height / 2 : port.point.x === box.x + box.width / 2;
+        for (const source of sources.filter(port => centered(port, a))) for (const target of targets.filter(port => centered(port, b))) {
+          if (source !== sources[0] || target !== targets[0]) addCorridors(source, target);
+        }
+      };
     }
     let chosen: Point[] | null = null, chosenLabel: Bounds | null = null, accepted: Geometry['crossings'] = [], nearest: Diagnostic[] = [];
-    const sortedCandidates = (flow.route ? candidates : candidates.map(normalized)).filter(route => route.length >= 2).sort((u, v) => {
-      return u.length - v.length || routeLength(u) - routeLength(v);
-    });
-    for (const route of sortedCandidates) {
-      const result = checkRoute(flow.id, route);
-      if (result.errors.length) { if (!nearest.length || result.errors.length < nearest.length) nearest = result.errors; continue; }
-      const label = title ? flow.labelBounds ?? placeLabel(flow.id, title, route) : null;
-      if (title && (!label || !labelClear(label, route))) { nearest = [{ code: 'LABEL_CLEARANCE', id: flow.id, point: route[0], message: 'No readable label position for flow', severity: 'error' }]; continue; }
-      chosen = route; chosenLabel = label; accepted = result.crossings; break;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const sortedCandidates = (flow.route ? candidates : candidates.map(normalized)).filter(route => route.length >= 2).sort((u, v) => {
+        return u.length - v.length || routeLength(u) - routeLength(v);
+      });
+      for (const route of sortedCandidates) {
+        const result = checkRoute(flow.id, route);
+        if (result.errors.length) { if (!nearest.length || result.errors.length < nearest.length) nearest = result.errors; continue; }
+        const label = title ? flow.labelBounds ?? placeLabel(flow.id, title, route) : null;
+        if (title && (!label || !labelClear(label, route))) { nearest = [{ code: 'LABEL_CLEARANCE', id: flow.id, point: route[0], message: 'No readable label position for flow', severity: 'error' }]; continue; }
+        chosen = route; chosenLabel = label; accepted = result.crossings; break;
+      }
+      if (chosen || !extraCorridors) break;
+      candidates.length = 0;
+      extraCorridors();
+      extraCorridors = undefined;
     }
     if (!chosen) { const unsatisfiable: Diagnostic = { code: 'ROUTE_UNSATISFIABLE', id: flow.id, relatedIds: [flow.source, flow.target], point: start, message: 'No collision-free orthogonal route exists; add a valid route hint or more grid space', severity: 'error' }; errors.push(...(flow.route ? nearest : [unsatisfiable])); continue; }
     edges[flow.id] = chosen; if (chosenLabel) labels[flow.id] = chosenLabel; crossings.push(...accepted);
