@@ -100,9 +100,9 @@ export function layoutProcess(model: ProcessDocument): Geometry {
   let x = 110;
   for (const stage of model.stages) {
     const columns = Math.max(1, ...items.filter(item => item.stage === stage.id).map(item => cells.get(item.id)!.column + 1));
-    stages[stage.id] = { x, y: 50, width: columns * 260, height: 0 }; x += columns * 260;
+    stages[stage.id] = { x, y: 60, width: columns * 260, height: 0 }; x += columns * 260;
   }
-  const width = x - 40 + 40; let top = 50;
+  const width = x - 40 + 40; let top = 60;
   for (const process of model.processes) {
     const pool = model.pools.find(pool => pool.process === process.id)!; const poolTop = top;
     const lanes = model.lanes.filter(lane => lane.process === process.id);
@@ -114,7 +114,7 @@ export function layoutProcess(model: ProcessDocument): Geometry {
       for (const item of members) {
         const annotation = 'text' in item, type = 'type' in item ? item.type : 'annotation';
         const taskLike = TASK_TYPES.has(type);
-        const size = annotation ? { width: 180, height: Math.max(70, Math.ceil(item.text.length / 22) * 18 + 24) } : taskLike ? { width: 180, height: Math.max(80, Math.ceil(item.name.length / 22) * 18 + 24) } : type === 'xor' || type === 'and' ? { width: 50, height: 50 } : { width: 36, height: 36 };
+        const size = annotation ? { width: 180, height: Math.max(70, Math.ceil(item.text.length / 22) * 18 + 24) } : taskLike ? { width: 200, height: Math.max(80, Math.ceil((Math.ceil(item.name.length / 22) * 18 + 24) / 40) * 40) } : type === 'xor' || type === 'and' ? { width: 50, height: 50 } : { width: 36, height: 36 };
         if (size.height > 400) fail('LABEL_SIZE', item.id, 'Text annotation exceeds a grid cell; split the annotation');
         const cell = cells.get(item.id)!, centerY = top + 180 + cell.row * 540;
         shapes[item.id] = { x: stages[item.stage].x + cell.column * 260 + (220 - size.width) / 2, y: centerY - size.height / 2, ...size };
@@ -303,7 +303,32 @@ export function layoutProcess(model: ProcessDocument): Geometry {
     edges[flow.id] = chosen; if (chosenLabel) labels[flow.id] = chosenLabel; crossings.push(...accepted);
   }
   if (errors.length) throw new BplmError(1, 'Invalid layout hints', errors);
-  if (!explicit) for (const stage of Object.values(stages)) stage.height = top - 50;
+  if (!explicit && model.pools.length === 1) {
+    // A single-pool automatic diagram owns every route. Fit its frame after
+    // routing instead of moving nodes away from their logical cells.
+    const pool = shapes[model.pools[0].id];
+    const points = Object.values(edges).flat();
+    const content = [...items.map(item => shapes[item.id]), ...Object.values(labels)];
+    const minX = Math.min(...points.map(point => point.x), ...content.map(box => box.x));
+    const minY = Math.min(...points.map(point => point.y), ...content.map(box => box.y));
+    const maxX = Math.max(...points.map(point => point.x), ...content.map(box => box.x + box.width));
+    const maxY = Math.max(...points.map(point => point.y), ...content.map(box => box.y + box.height));
+    const left = Math.max(0, Math.min(pool.x, Math.floor(minX / 20) * 20 - 20));
+    const upper = Math.max(0, Math.min(pool.y, Math.floor(minY / 20) * 20 - 20));
+    const right = Math.max(pool.x + pool.width, Math.ceil(maxX / 20) * 20 + 20);
+    const lower = Math.max(pool.y + pool.height, Math.ceil(maxY / 20) * 20 + 20);
+    Object.assign(pool, { x: left, y: upper, width: right - left, height: lower - upper });
+    const partitions = model.lanes.filter(lane => lane.process === model.pools[0].process);
+    for (const [index, lane] of partitions.entries()) {
+      const box = shapes[lane.id], y = index === 0 ? upper : box.y;
+      const bottom = index === partitions.length - 1 ? lower : box.y + box.height;
+      Object.assign(box, { x: left + 30, y, width: right - left - 30, height: bottom - y });
+    }
+  }
+  if (!explicit) {
+    const bottom = Math.max(top, ...model.pools.map(pool => shapes[pool.id].y + shapes[pool.id].height));
+    for (const stage of Object.values(stages)) stage.height = bottom - stage.y;
+  }
   const routePoints = Object.values(edges).flat();
   const allBoxes = Object.values(shapes);
   return { shapes, edges, labels, stages, crossings, viewport: { x: 0, y: 0, width: Math.max(width + 80, ...routePoints.map(point => point.x + 40), ...allBoxes.map(box => box.x + box.width + 40)), height: Math.max(top, ...routePoints.map(point => point.y + 40), ...allBoxes.map(box => box.y + box.height + 40)) } };
