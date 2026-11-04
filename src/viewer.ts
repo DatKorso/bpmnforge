@@ -19,6 +19,69 @@ const zoomValue = document.getElementById('zoom-value')!;
 document.getElementById('title')!.textContent = data.model.name;
 overview.textContent = 'Обзор схемы';
 
+const gridToggle = document.getElementById('grid-toggle') as HTMLInputElement;
+gridToggle.checked = false;
+let gridLayer: SVGGElement | undefined;
+let gridArea: SVGRectElement | undefined;
+let gridMask: SVGMaskElement | undefined;
+let gridMaskArea: SVGRectElement | undefined;
+
+function updateGrid() {
+  if (!gridLayer || !gridArea || !gridMask || !gridMaskArea) return;
+  gridLayer.style.display = gridToggle.checked ? '' : 'none';
+  const view = canvas.viewbox();
+  const bounds = { x: Math.floor(view.x / 100) * 100 - 100, y: Math.floor(view.y / 100) * 100 - 100,
+    width: Math.ceil(view.width / 100) * 100 + 300, height: Math.ceil(view.height / 100) * 100 + 300 };
+  for (const element of [gridArea, gridMask, gridMaskArea]) {
+    for (const [key, value] of Object.entries(bounds)) element.setAttribute(key, String(value));
+  }
+}
+
+function installGrid() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = (tag: string, attributes: Record<string, string | number> = {}) => {
+    const element = document.createElementNS(ns, tag);
+    for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
+    return element;
+  };
+  // Separate canvas layer shares diagram coordinates but never contributes to its content bounds.
+  gridLayer = canvas.getLayer('bplm-grid', 500);
+  gridLayer!.setAttribute('class', 'bplm-grid');
+  gridLayer!.setAttribute('aria-hidden', 'true');
+  gridLayer!.style.pointerEvents = 'none';
+  const definitions = svg('defs');
+  const minor = svg('pattern', { id: 'BPLM_GridMinor', patternUnits: 'userSpaceOnUse', x: 0, y: 0, width: 20, height: 20 });
+  minor.append(svg('path', { d: 'M20 0 H0 V20', fill: 'none', stroke: '#9aadc0', 'stroke-width': 0.6, opacity: 0.55 }));
+  const major = svg('pattern', { id: 'BPLM_GridMajor', patternUnits: 'userSpaceOnUse', x: 0, y: 0, width: 100, height: 100 });
+  major.append(svg('rect', { width: 100, height: 100, fill: 'url(#BPLM_GridMinor)' }),
+    svg('path', { d: 'M100 0 H0 V100', fill: 'none', stroke: '#708ba5', 'stroke-width': 0.9, opacity: 0.7 }));
+  gridMask = svg('mask', { id: 'BPLM_GridMask', maskUnits: 'userSpaceOnUse', maskContentUnits: 'userSpaceOnUse' }) as SVGMaskElement;
+  gridMaskArea = svg('rect', { fill: 'white' }) as SVGRectElement;
+  gridMask.append(gridMaskArea);
+  // Keep node text, gateway/event labels and participant headers clear of grid lines.
+  for (const node of data.model.nodes) {
+    if (node.type === 'eventSubProcess') continue;
+    const b = data.geometry.shapes[node.id];
+    if (['start', 'end', 'conditionalStart', 'terminateEnd', 'timerCatch'].includes(node.type)) {
+      gridMask.append(svg('ellipse', { cx: b.x + b.width / 2, cy: b.y + b.height / 2, rx: b.width / 2 + 1, ry: b.height / 2 + 1, fill: 'black' }));
+    } else if (node.type === 'xor' || node.type === 'and') {
+      gridMask.append(svg('polygon', { points: `${b.x + b.width / 2},${b.y} ${b.x + b.width},${b.y + b.height / 2} ${b.x + b.width / 2},${b.y + b.height} ${b.x},${b.y + b.height / 2}`, fill: 'black' }));
+    } else gridMask.append(svg('rect', { ...b, fill: 'black' }));
+  }
+  for (const item of [...(data.model.annotations ?? []), ...data.model.pools, ...data.model.lanes]) {
+    const b = data.geometry.shapes[item.id];
+    gridMask.append(svg('rect', { ...b, width: 'text' in item ? b.width : 30, fill: 'black' }));
+  }
+  for (const b of Object.values(data.geometry.labels) as { x: number; y: number; width: number; height: number }[]) gridMask.append(svg('rect', { ...b, fill: 'black' }));
+  definitions.append(minor, major, gridMask);
+  gridArea = svg('rect', { id: 'BPLM_GridArea', fill: 'url(#BPLM_GridMajor)', mask: 'url(#BPLM_GridMask)' }) as SVGRectElement;
+  gridLayer!.append(definitions, gridArea);
+  updateGrid();
+}
+gridToggle.addEventListener('change', updateGrid);
+eventBus.on('canvas.viewbox.changed', updateGrid);
+eventBus.on('canvas.resized', updateGrid);
+
 let activeStage: string | null = null;
 function updateZoom() { zoomValue.textContent = `${Math.round(canvas.zoom() * 100)}%`; }
 function markStage(id: string | null) {
@@ -249,7 +312,7 @@ diagram.addEventListener('keydown', event => {
 
 viewer.importXML(data.xml).then(({ warnings }: any) => {
   if (warnings.length) throw new Error('BPMN import warnings');
-  wireNodes(); renderBridges();
+  wireNodes(); installGrid(); renderBridges();
   const firstStage = data.model.stages[0]; if (firstStage) showStage(firstStage.id); else showOverview();
   document.body.dataset.ready = 'true';
 }).catch(() => { document.body.dataset.error = 'true'; status.textContent = 'Не удалось открыть BPMN'; });
