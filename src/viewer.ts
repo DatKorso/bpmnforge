@@ -276,7 +276,10 @@ document.getElementById('zoom-out')!.addEventListener('click', () => adjustZoom(
 eventBus.on('canvas.viewbox.changed', updateZoom);
 diagram.addEventListener('wheel', event => {
   event.preventDefault(); const rect = diagram.getBoundingClientRect();
-  adjustZoom(event.deltaY < 0 ? 1.12 : 1 / 1.12, { x: event.clientX - rect.left, y: event.clientY - rect.top });
+  if (!event.deltaY) return;
+  const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? diagram.clientHeight : 1);
+  const factor = Math.exp(-Math.max(-100, Math.min(100, pixels)) * 0.0003);
+  adjustZoom(factor, { x: event.clientX - rect.left, y: event.clientY - rect.top });
 }, { passive: false });
 let dragging: { x: number; y: number; startX: number; startY: number; pointer: number; moved: boolean } | null = null;
 diagram.addEventListener('pointerdown', event => {
