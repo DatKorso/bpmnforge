@@ -88,6 +88,15 @@ export function layoutProcess(model: ProcessDocument): Geometry {
   const nodeTypes = new Map(model.nodes.map(node => [node.id, node.type]));
   const isGateway = (id: string) => nodeTypes.get(id) === 'xor' || nodeTypes.get(id) === 'and';
   const counts = new Map<string, number>();
+  const sizes = new Map(items.map(item => {
+    const annotation = 'text' in item, type = 'type' in item ? item.type : 'annotation';
+    const size = annotation ? { width: 180, height: Math.max(70, Math.ceil(item.text.length / 22) * 18 + 24) }
+      : TASK_TYPES.has(type) ? { width: 200, height: Math.max(80, Math.ceil((Math.ceil(item.name.length / 22) * 18 + 24) / 40) * 40) }
+      : type === 'xor' || type === 'and' ? { width: 50, height: 50 } : { width: 36, height: 36 };
+    return [item.id, size] as const;
+  }));
+  const labelHeight = (name: string) => Math.max(40, Math.ceil(name.length / 22) * 18);
+  const gridCeil = (value: number) => Math.ceil(value / 20) * 20;
   for (const item of items) {
     const key = `${item.process}/${item.lane ?? ''}/${item.stage}/${item.row ?? 0}`;
     const column = item.column ?? counts.get(key) ?? 0, row = item.row ?? 0;
@@ -109,16 +118,35 @@ export function layoutProcess(model: ProcessDocument): Geometry {
     const partitions = lanes.length ? lanes : [{ id: '', process: process.id }];
     for (const lane of partitions) {
       const members = items.filter(item => item.process === process.id && (item.lane ?? '') === lane.id);
-      const rows = Math.max(1, ...members.map(item => cells.get(item.id)!.row + 1)); const height = rows * 540;
+      const rows = Math.max(1, ...members.map(item => cells.get(item.id)!.row + 1));
+      const rowCenters: number[] = [];
+      let height = 0;
+      for (let row = 0; row < rows; row++) {
+        const rowMembers = members.filter(item => cells.get(item.id)!.row === row);
+        const above = gridCeil(Math.max(20, ...rowMembers.map(item => sizes.get(item.id)!.height / 2)) + 40);
+        const below = gridCeil(Math.max(20, ...rowMembers.map(item => {
+          const size = sizes.get(item.id)!;
+          if ('text' in item || TASK_TYPES.has(item.type)) return size.height / 2;
+          return (isGateway(item.id) ? size.height / 2 + 20 : 38) + labelHeight(item.name);
+        })) + 40);
+        rowCenters.push(top + height + above);
+        height += above + below;
+      }
       if (lane.id) shapes[lane.id] = { x: 70, y: top, width: width - 30, height };
       for (const item of members) {
         const annotation = 'text' in item, type = 'type' in item ? item.type : 'annotation';
         const taskLike = TASK_TYPES.has(type);
-        const size = annotation ? { width: 180, height: Math.max(70, Math.ceil(item.text.length / 22) * 18 + 24) } : taskLike ? { width: 200, height: Math.max(80, Math.ceil((Math.ceil(item.name.length / 22) * 18 + 24) / 40) * 40) } : type === 'xor' || type === 'and' ? { width: 50, height: 50 } : { width: 36, height: 36 };
+        const size = sizes.get(item.id)!;
         if (size.height > 400) fail('LABEL_SIZE', item.id, 'Text annotation exceeds a grid cell; split the annotation');
-        const cell = cells.get(item.id)!, centerY = top + 180 + cell.row * 540;
+        const cell = cells.get(item.id)!, centerY = rowCenters[cell.row];
         shapes[item.id] = { x: stages[item.stage].x + cell.column * 260 + (220 - size.width) / 2, y: centerY - size.height / 2, ...size };
-        if (!annotation && !taskLike) labels[item.id] = { x: stages[item.stage].x + cell.column * 260 + 20, y: centerY + 38, width: 180, height: Math.max(40, Math.ceil(item.name.length / 22) * 18) };
+        if (!annotation && !taskLike) {
+          const box = shapes[item.id];
+          // A centered caption blocks the bottom vertex when a gateway has
+          // four connections. Keep the caption diagonally clear of every port.
+          labels[item.id] = { x: isGateway(item.id) ? box.x + box.width + 20 : box.x + box.width / 2 - 90,
+            y: isGateway(item.id) ? box.y + box.height + 20 : centerY + 38, width: 180, height: labelHeight(item.name) };
+        }
       }
       top += height;
     }
