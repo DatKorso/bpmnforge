@@ -282,11 +282,25 @@ export function layoutProcess(model: ProcessDocument): Geometry {
         }
       };
     }
+    // Participants and annotations may connect anywhere on their boundary;
+    // the midpoint preference belongs to flow nodes.
+    const endpointOffset = (point: Point, box: Bounds, id: string) => !nodeTypes.has(id) ? 0 : Math.min(
+      Math.abs(point.x - box.x) + Math.abs(point.y - box.y - box.height / 2),
+      Math.abs(point.x - box.x - box.width) + Math.abs(point.y - box.y - box.height / 2),
+      Math.abs(point.x - box.x - box.width / 2) + Math.abs(point.y - box.y),
+      Math.abs(point.x - box.x - box.width / 2) + Math.abs(point.y - box.y - box.height)
+    );
+    const shiftedEndpoints = (route: Point[]) => Number(endpointOffset(route[0], a, flow.source) > 1e-9) + Number(endpointOffset(route.at(-1)!, b, flow.target) > 1e-9);
+    const totalOffset = (route: Point[]) => endpointOffset(route[0], a, flow.source) / Math.min(a.width, a.height) + endpointOffset(route.at(-1)!, b, flow.target) / Math.min(b.width, b.height);
     let chosen: Point[] | null = null, chosenLabel: Bounds | null = null, accepted: Geometry['crossings'] = [], nearest: Diagnostic[] = [];
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const sortedCandidates = (flow.route ? candidates : candidates.map(normalized)).filter(route => route.length >= 2).sort((u, v) => {
-        return u.length - v.length || routeLength(u) - routeLength(v);
-      });
+    // Try centered simple routes and then centered detours before considering
+    // shifted ports. A shorter corner attachment must not win prematurely.
+    for (let attempt = 0; attempt < (flow.route ? 1 : 3); attempt++) {
+      const sortedCandidates = (flow.route ? candidates : candidates.map(normalized)).filter(route => route.length >= 2)
+        .filter(route => flow.route || (attempt < 2 ? shiftedEndpoints(route) === 0 : shiftedEndpoints(route) > 0)).sort((u, v) => {
+          return (attempt === 2 ? shiftedEndpoints(u) - shiftedEndpoints(v) || totalOffset(u) - totalOffset(v) : 0)
+            || u.length - v.length || routeLength(u) - routeLength(v);
+        });
       for (const route of sortedCandidates) {
         const result = checkRoute(flow.id, route);
         if (result.errors.length) { if (!nearest.length || result.errors.length < nearest.length) nearest = result.errors; continue; }
@@ -294,10 +308,8 @@ export function layoutProcess(model: ProcessDocument): Geometry {
         if (title && (!label || !labelClear(label, route))) { nearest = [{ code: 'LABEL_CLEARANCE', id: flow.id, point: route[0], message: 'No readable label position for flow', severity: 'error' }]; continue; }
         chosen = route; chosenLabel = label; accepted = result.crossings; break;
       }
-      if (chosen || !extraCorridors) break;
-      candidates.length = 0;
-      extraCorridors();
-      extraCorridors = undefined;
+      if (chosen) break;
+      if (attempt === 0 && extraCorridors) extraCorridors();
     }
     if (!chosen) { const unsatisfiable: Diagnostic = { code: 'ROUTE_UNSATISFIABLE', id: flow.id, relatedIds: [flow.source, flow.target], point: start, message: 'No collision-free orthogonal route exists; add a valid route hint or more grid space', severity: 'error' }; errors.push(...(flow.route ? nearest : [unsatisfiable])); continue; }
     edges[flow.id] = chosen; if (chosenLabel) labels[flow.id] = chosenLabel; crossings.push(...accepted);
