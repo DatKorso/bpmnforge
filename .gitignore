@@ -1,0 +1,13 @@
+node_modules/
+assets/
+dist/
+*.tgz
+.DS_Store
+.planning/
+.private/
+private/
+examples/
+test-results/
+playwright-report/
+*.tmp-*
+*.bak-*

@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "id": "Fixture",
+  "name": "Техническая схема",
+  "description": "Вымышленная модель для тестов.",
+  "stages": [
+    {
+      "id": "Review",
+      "name": "Проверка"
+    }
+  ],
+  "processes": [
+    {
+      "id": "Work",
+      "name": "Тестовый процесс"
+    }
+  ],
+  "pools": [
+    {
+      "id": "Team",
+      "name": "Тестовый участник",
+      "process": "Work"
+    }
+  ],
+  "lanes": [
+    {
+      "id": "Agent",
+      "name": "Исполнитель",
+      "process": "Work"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "Start",
+      "type": "start",
+      "name": "Начало",
+      "process": "Work",
+      "lane": "Agent",
+      "stage": "Review"
+    },
+    {
+      "id": "Check",
+      "type": "task",
+      "name": "Проверить данные",
+      "description": "Тестовое описание без бизнес-правил.",
+      "process": "Work",
+      "lane": "Agent",
+      "stage": "Review"
+    },
+    {
+      "id": "End",
+      "type": "end",
+      "name": "Тест завершён",
+      "process": "Work",
+      "lane": "Agent",
+      "stage": "Review"
+    }
+  ],
+  "flows": [
+    {
+      "id": "ToCheck",
+      "type": "sequence",
+      "source": "Start",
+      "target": "Check"
+    },
+    {
+      "id": "ToEnd",
+      "type": "sequence",
+      "source": "Check",
+      "target": "End"
+    }
+  ]
+}
