@@ -25,7 +25,12 @@ export async function validateProcess(input: unknown, options: { htmlPath: strin
   const model = structuredClone(input) as ProcessDocument;
   const entities = [model, ...model.stages, ...model.processes, ...model.pools, ...model.lanes, ...model.nodes, ...model.flows, ...(model.annotations ?? [])];
   const ids = new Set<string>();
-  for (const entity of entities) { if (ids.has(entity.id)) report('DUPLICATE_ID', entity.id, 'ID must be globally unique'); ids.add(entity.id); }
+  for (const entity of entities) {
+    if (Object.hasOwn(Object.prototype, entity.id)) report('RESERVED_ID', entity.id, 'ID conflicts with an Object.prototype property');
+    if (ids.has(entity.id)) report('DUPLICATE_ID', entity.id, 'ID must be globally unique');
+    ids.add(entity.id);
+  }
+  finish();
   const processes = new Map(model.processes.map(item => [item.id, item])); const stages = new Set(model.stages.map(item => item.id));
   const lanes = new Map(model.lanes.map(item => [item.id, item])); const nodes = new Map(model.nodes.map(item => [item.id, item]));
   const pools = new Map(model.pools.map(item => [item.id, item])); const annotations = new Map((model.annotations ?? []).map(item => [item.id, item]));

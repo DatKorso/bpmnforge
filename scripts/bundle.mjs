@@ -1,7 +1,9 @@
 import { build } from 'esbuild';
-import { mkdir, copyFile, rm } from 'node:fs/promises';
+import { mkdir, copyFile, rm, writeFile } from 'node:fs/promises';
+import { collectBrowserLicenses } from './licenses.mjs';
 await mkdir('assets', { recursive: true });
-await build({ entryPoints: ['src/viewer.ts'], bundle: true, format: 'iife', platform: 'browser', target: 'es2022', outfile: 'assets/viewer.js', minify: true, legalComments: 'inline' });
+const browser = await build({ entryPoints: ['src/viewer.ts'], bundle: true, format: 'iife', platform: 'browser', target: 'es2022', outfile: 'assets/viewer.js', minify: true, legalComments: 'inline', metafile: true });
+await writeFile('assets/THIRD-PARTY-NOTICES.txt', await collectBrowserLicenses(browser.metafile));
 await copyFile('node_modules/bpmn-js/dist/assets/diagram-js.css', 'assets/viewer.css');
 await copyFile('node_modules/bpmn-js/LICENSE', 'assets/bpmn-js-LICENSE.txt');
 // Node intentionally refuses native TS stripping inside node_modules. Publish
