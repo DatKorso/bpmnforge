@@ -54,13 +54,16 @@ node bin/bpmnforge.mjs build process.bpmnforge.json
 
 ```sh
 cd "/путь/Мой проект"
-npm install https://github.com/DatKorso/bpmnforge/releases/download/v0.1.0/bpmnforge-0.1.0.tgz
+curl --fail --location --output bpmnforge-0.1.0.tgz https://github.com/DatKorso/bpmnforge/releases/download/v0.1.0/bpmnforge-0.1.0.tgz
+npm install ./bpmnforge-0.1.0.tgz
 npx --no-install bpmnforge version
 npx --no-install bpmnforge validate "описание процесса.bpmnforge.json" --json
 npx --no-install bpmnforge build "описание процесса.bpmnforge.json"
 ```
 
 Для локальной сборки архива выполните `npm pack` в клонированном репозитории, затем установите полученный `.tgz` через `npm install "/путь/bpmnforge/bpmnforge-0.1.0.tgz"`. Контрольная сумма опубликованного архива находится в `SHA256SUMS.txt` рядом с ним на странице релиза.
+
+Скачивание перед установкой совместимо с npm 12, где установка пакета прямо по удалённому URL по умолчанию отключена (`EALLOWREMOTE`).
 
 Пакет распространяется через GitHub Releases; в реестре npm этот выпуск не публиковался. Установка зависимостей требует сети или заполненного npm-кеша. После установки генерация и просмотр автономны. Пакет из GitHub сначала собирают командами выше; установка исходного Git URL без сборки не является поддерживаемым способом поставки.
 
