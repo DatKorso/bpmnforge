@@ -8,10 +8,10 @@ BPMN Forge превращает структурированный JSON проц
 
 ## Первый запуск из GitHub
 
-Скопируйте URL публичного репозитория BPMN Forge из GitHub вместо `REPOSITORY_URL`. Публикация репозитория и npm-пакета выполняется отдельно; это инструкция для подготовленного тега.
+Исходники и [релиз v0.1.0](https://github.com/DatKorso/bpmnforge/releases/tag/v0.1.0) доступны на GitHub. Установка из исходников:
 
 ```sh
-git clone --branch v0.1.0 --single-branch REPOSITORY_URL bpmnforge
+git clone --branch v0.1.0 --single-branch https://github.com/DatKorso/bpmnforge.git bpmnforge
 cd bpmnforge
 npm ci
 npm run build
@@ -50,18 +50,19 @@ node bin/bpmnforge.mjs build process.bpmnforge.json
 
 ## Установка в другой проект
 
-Соберите архив из проверенной версии:
+Установите готовый пакет из GitHub Release:
 
 ```sh
-npm pack
 cd "/путь/Мой проект"
-npm install "/путь/bpmnforge/bpmnforge-0.1.0.tgz"
+npm install https://github.com/DatKorso/bpmnforge/releases/download/v0.1.0/bpmnforge-0.1.0.tgz
 npx --no-install bpmnforge version
 npx --no-install bpmnforge validate "описание процесса.bpmnforge.json" --json
 npx --no-install bpmnforge build "описание процесса.bpmnforge.json"
 ```
 
-Установка зависимостей требует сети или заполненного npm-кеша. После установки генерация и просмотр автономны. Пакет из GitHub сначала собирают командами выше; установка исходного Git URL без сборки не является поддерживаемым способом поставки.
+Для локальной сборки архива выполните `npm pack` в клонированном репозитории, затем установите полученный `.tgz` через `npm install "/путь/bpmnforge/bpmnforge-0.1.0.tgz"`. Контрольная сумма опубликованного архива находится в `SHA256SUMS.txt` рядом с ним на странице релиза.
+
+Пакет распространяется через GitHub Releases; в реестре npm этот выпуск не публиковался. Установка зависимостей требует сети или заполненного npm-кеша. После установки генерация и просмотр автономны. Пакет из GitHub сначала собирают командами выше; установка исходного Git URL без сборки не является поддерживаемым способом поставки.
 
 ## Документация и проверка
 

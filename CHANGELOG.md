@@ -2,7 +2,7 @@
 
 ## 0.1.0
 
-Первый публично подготовленный выпуск CLI BPMN Forge. Публикация в GitHub/npm выполняется отдельно.
+Первый публичный выпуск CLI BPMN Forge: [исходники](https://github.com/DatKorso/bpmnforge) и [готовый пакет](https://github.com/DatKorso/bpmnforge/releases/tag/v0.1.0) доступны на GitHub. В реестре npm этот выпуск не публиковался.
 
 - Название продукта — BPMN Forge; CLI и npm-пакет — `bpmnforge`.
 - Единый JSON версии 1 → автономный интерактивный HTML и BPMN 2.0 с общей DI-геометрией.

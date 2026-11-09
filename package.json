@@ -49,5 +49,21 @@
     "@playwright/test": "1.64.0",
     "@types/node": "26.6.5"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DatKorso/bpmnforge.git"
+  },
+  "homepage": "https://github.com/DatKorso/bpmnforge#readme",
+  "bugs": {
+    "url": "https://github.com/DatKorso/bpmnforge/issues"
+  },
+  "keywords": [
+    "bpmn",
+    "bpmn2",
+    "cli",
+    "offline",
+    "ai-agents",
+    "process-visualization"
+  ]
 }
