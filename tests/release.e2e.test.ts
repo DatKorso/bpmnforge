@@ -11,7 +11,10 @@ import { calls, events, minimal } from './fixtures/models.ts';
 test('synthetic calls, event subprocess and full licenses work offline at both desktop sizes', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'bplm release '));
   const browser = await chromium.launch({ channel: process.env.BPLM_BROWSER_CHANNEL });
-  const notices = await readFile(new URL('../assets/THIRD-PARTY-NOTICES.txt', import.meta.url), 'utf8');
+  const notices = [
+    await readFile(new URL('../LICENSE', import.meta.url), 'utf8'),
+    await readFile(new URL('../assets/THIRD-PARTY-NOTICES.txt', import.meta.url), 'utf8')
+  ].join('\n');
   try {
     for (const fixture of [calls, events]) {
       const model = fixture();
