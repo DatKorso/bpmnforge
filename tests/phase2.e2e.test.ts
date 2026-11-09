@@ -11,8 +11,8 @@ import type { ProcessDocument } from '../src/domain.ts';
 const base = JSON.parse(await readFile(new URL('./fixtures/minimal.json', import.meta.url), 'utf8')) as ProcessDocument;
 
 test('offline stage navigation, overview and keyboard canvas controls at both desktop sizes', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'bplm stage '));
-  const browser = await chromium.launch({ channel: process.env.BPLM_BROWSER_CHANNEL });
+  const dir = await mkdtemp(join(tmpdir(), 'bpmnforge stage '));
+  const browser = await chromium.launch({ channel: process.env.BPMNFORGE_BROWSER_CHANNEL });
   try {
     const model = structuredClone(base);
     model.stages.push({ id: 'Publish', name: 'Публикация' });
@@ -27,7 +27,7 @@ test('offline stage navigation, overview and keyboard canvas controls at both de
       const context = await browser.newContext({ viewport, offline: true }); const page = await context.newPage(); page.setDefaultTimeout(3000);
       const requests: string[] = []; page.on('request', request => { if (/^https?:/.test(request.url())) requests.push(request.url()); });
       await page.goto(pathToFileURL(htmlPath).href); await page.waitForSelector('body[data-ready="true"]');
-      const viewbox = () => page.evaluate(() => (window as any).bplmViewer.get('canvas').viewbox());
+      const viewbox = () => page.evaluate(() => (window as any).bpmnforgeViewer.get('canvas').viewbox());
       await page.getByRole('button', { name: 'Проверка', exact: true }).click();
       assert.equal(await page.getByRole('button', { name: 'Проверка', exact: true }).getAttribute('aria-pressed'), 'true');
       const stage = await viewbox(); assert.ok(stage.width < model.nodes.length * 260 + 100);

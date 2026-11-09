@@ -9,14 +9,14 @@ import { minimal, fullProfile, calls, events } from './fixtures/models.ts';
 
 for (const [name, fixture] of Object.entries({ minimal: () => structuredClone(minimal), branching: fullProfile, calls, events })) {
   test(`${name}: IDs, documentation, endpoints and geometry survive HTML/BPMN export`, async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'bplm semantics '));
+    const dir = await mkdtemp(join(tmpdir(), 'bpmnforge semantics '));
     try {
       const model = fixture();
       const sourcePath = join(dir, 'source.json'), htmlPath = join(dir, 'out.html'), bpmnPath = join(dir, 'out.bpmn');
       await writeFile(sourcePath, JSON.stringify(model));
       const result = await buildProcess({ sourcePath, htmlPath, bpmnPath });
       const xml = await readFile(bpmnPath, 'utf8'), html = await readFile(htmlPath, 'utf8');
-      const data = JSON.parse(html.match(/id="bplm-data">([\s\S]*?)<\/script>/)![1]);
+      const data = JSON.parse(html.match(/id="bpmnforge-data">([\s\S]*?)<\/script>/)![1]);
       assert.deepEqual(data.model, model); assert.equal(data.xml, xml); assert.deepEqual(data.geometry, JSON.parse(JSON.stringify(result.geometry)));
       const { elementsById, warnings } = await new BpmnModdle().fromXML(xml);
       assert.deepEqual(warnings, []);
@@ -33,10 +33,10 @@ for (const [name, fixture] of Object.entries({ minimal: () => structuredClone(mi
         if (flow.condition) assert.equal(elementsById[flow.id].conditionExpression.body, flow.condition);
       }
       for (const [id, bounds] of Object.entries(result.geometry.shapes)) {
-        const di = elementsById[`BPLM_DI_${id}`];
+        const di = elementsById[`BPMNFORGE_DI_${id}`];
         assert.deepEqual({ x: di.bounds.x, y: di.bounds.y, width: di.bounds.width, height: di.bounds.height }, bounds);
       }
-      for (const [id, points] of Object.entries(result.geometry.edges)) assert.deepEqual(elementsById[`BPLM_DI_${id}`].waypoint.map((p: any) => ({ x: p.x, y: p.y })), points);
+      for (const [id, points] of Object.entries(result.geometry.edges)) assert.deepEqual(elementsById[`BPMNFORGE_DI_${id}`].waypoint.map((p: any) => ({ x: p.x, y: p.y })), points);
       if (name === 'events') {
         assert.equal(elementsById.EventSub.triggeredByEvent, true);
         assert.equal(elementsById.Conditional.eventDefinitions[0].condition.body, 'syntheticFlag');

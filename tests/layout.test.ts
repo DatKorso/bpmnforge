@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { layoutProcess } from '../src/layout.ts';
-import { BplmError, type Bounds, type Flow, type Point, type ProcessDocument, type ProcessNode } from '../src/domain.ts';
+import { BpmnForgeError, type Bounds, type Flow, type Point, type ProcessDocument, type ProcessNode } from '../src/domain.ts';
 
 function modelWith(nodes: { id: string; type?: ProcessNode['type']; bounds: Bounds; labelBounds?: Bounds }[], flows: Flow[]): ProcessDocument {
   return {
@@ -96,7 +96,7 @@ test('direct routes still respect blocking shapes and flow labels', () => {
   assert.ok(geometry.labels.Across);
   assert.deepEqual(layoutProcess(model), geometry);
   model.flows[0].route = [{ x: 280, y: 140 }, { x: 700, y: 140 }];
-  assert.throws(() => layoutProcess(model), error => error instanceof BplmError && error.diagnostics.some(item => item.code === 'ROUTE_OBSTACLE' && item.relatedIds?.includes('Obstacle')));
+  assert.throws(() => layoutProcess(model), error => error instanceof BpmnForgeError && error.diagnostics.some(item => item.code === 'ROUTE_OBSTACLE' && item.relatedIds?.includes('Obstacle')));
 });
 
 test('caller-provided stepped routes remain verbatim even when a straight route is possible', () => {
@@ -163,7 +163,7 @@ test('a route that doubles back is rejected instead of being normalized into a v
     { id: 'A', bounds: { x: 100, y: 100, width: 180, height: 80 } },
     { id: 'B', bounds: { x: 700, y: 100, width: 180, height: 80 } }
   ], [{ ...link('Across', 'A', 'B'), route: [{ x: 280, y: 140 }, { x: 500, y: 140 }, { x: 400, y: 140 }, { x: 700, y: 140 }] }]);
-  assert.throws(() => layoutProcess(model), error => error instanceof BplmError && error.diagnostics.some(item => item.code === 'ROUTE_SELF_INTERSECTION'));
+  assert.throws(() => layoutProcess(model), error => error instanceof BpmnForgeError && error.diagnostics.some(item => item.code === 'ROUTE_SELF_INTERSECTION'));
 });
 
 test('too-small automatic endpoints report insufficient attachment clearance with the flow ID', () => {
@@ -171,7 +171,7 @@ test('too-small automatic endpoints report insufficient attachment clearance wit
     { id: 'A', bounds: { x: 100, y: 100, width: 20, height: 20 } },
     { id: 'B', bounds: { x: 400, y: 100, width: 180, height: 80 } }
   ], [link('Across', 'A', 'B')]);
-  assert.throws(() => layoutProcess(model), error => error instanceof BplmError && error.diagnostics.some(item => item.code === 'ROUTE_UNSATISFIABLE' && item.id === 'Across'));
+  assert.throws(() => layoutProcess(model), error => error instanceof BpmnForgeError && error.diagnostics.some(item => item.code === 'ROUTE_UNSATISFIABLE' && item.id === 'Across'));
 });
 
 // Reproduces the branching, lanes and participant links from the original browser fixture.
@@ -221,7 +221,7 @@ test('explicit gateway endpoints must touch the diamond contour rather than its 
     { id: 'Gateway', type: 'xor', bounds: { x: 100, y: 100, width: 100, height: 80 } },
     { id: 'Task', bounds: { x: 450, y: 100, width: 180, height: 100 } }
   ], [{ ...link('Branch', 'Gateway', 'Task'), route: [{ x: 200, y: 120 }, { x: 450, y: 120 }] }]);
-  assert.throws(() => layoutProcess(model), error => error instanceof BplmError && error.diagnostics.some(item => item.code === 'ROUTE_GATEWAY_PORT' && item.id === 'Branch' && item.relatedIds?.includes('Gateway')));
+  assert.throws(() => layoutProcess(model), error => error instanceof BpmnForgeError && error.diagnostics.some(item => item.code === 'ROUTE_GATEWAY_PORT' && item.id === 'Branch' && item.relatedIds?.includes('Gateway')));
   const route = [{ x: 175, y: 120 }, { x: 450, y: 120 }];
   model.flows[0].route = route;
   assert.deepEqual(layoutProcess(model).edges.Branch, route, 'a sloped-side attachment is a valid explicit route');
@@ -233,7 +233,7 @@ test('diamond obstacle checks reject a line through the actual shape interior', 
     { id: 'B', bounds: { x: 700, y: 100, width: 180, height: 80 } },
     { id: 'Gateway', type: 'xor', bounds: { x: 400, y: 90, width: 100, height: 100 } }
   ], [{ ...link('Across', 'A', 'B'), route: [{ x: 280, y: 140 }, { x: 700, y: 140 }] }]);
-  assert.throws(() => layoutProcess(model), error => error instanceof BplmError && error.diagnostics.some(item => item.code === 'ROUTE_OBSTACLE' && item.relatedIds?.includes('Gateway')));
+  assert.throws(() => layoutProcess(model), error => error instanceof BpmnForgeError && error.diagnostics.some(item => item.code === 'ROUTE_OBSTACLE' && item.relatedIds?.includes('Gateway')));
 });
 
 test('five outgoing choices and an incoming link keep one gateway with distinct contour attachments', () => {

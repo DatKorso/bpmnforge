@@ -9,8 +9,8 @@ import { buildProcess } from '../src/build.ts';
 import { calls, events, minimal } from './fixtures/models.ts';
 
 test('synthetic calls, event subprocess and full licenses work offline at both desktop sizes', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'bplm release '));
-  const browser = await chromium.launch({ channel: process.env.BPLM_BROWSER_CHANNEL });
+  const dir = await mkdtemp(join(tmpdir(), 'bpmnforge release '));
+  const browser = await chromium.launch({ channel: process.env.BPMNFORGE_BROWSER_CHANNEL });
   const notices = [
     await readFile(new URL('../LICENSE', import.meta.url), 'utf8'),
     await readFile(new URL('../assets/THIRD-PARTY-NOTICES.txt', import.meta.url), 'utf8')
@@ -66,8 +66,8 @@ test('synthetic calls, event subprocess and full licenses work offline at both d
 });
 
 test('a long synthetic stage list exposes scroll controls without overlapping the reader', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'bplm stages '));
-  const browser = await chromium.launch({ channel: process.env.BPLM_BROWSER_CHANNEL });
+  const dir = await mkdtemp(join(tmpdir(), 'bpmnforge stages '));
+  const browser = await chromium.launch({ channel: process.env.BPMNFORGE_BROWSER_CHANNEL });
   try {
     const model = structuredClone(minimal);
     model.stages = Array.from({ length: 14 }, (_, i) => ({ id: `Stage${i}`, name: `Тестовый этап ${i + 1}` }));

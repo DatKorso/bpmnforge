@@ -1,13 +1,13 @@
 {
-  "name": "bplm",
+  "name": "bpmnforge",
   "version": "0.1.0",
   "type": "module",
-  "description": "Offline process JSON to HTML and BPMN generator",
+  "description": "Agent-friendly offline BPMN and interactive HTML generator",
   "engines": {
     "node": ">=24"
   },
   "bin": {
-    "bplm": "bin/bplm.mjs"
+    "bpmnforge": "bin/bpmnforge.mjs"
   },
   "files": [
     "bin",
@@ -27,7 +27,7 @@
     "./layout": "./dist/layout.js",
     "./bpmn": "./dist/bpmn.js",
     "./html": "./dist/html.js",
-    "./schema": "./schema/bplm.schema.json"
+    "./schema": "./schema/bpmnforge.schema.json"
   },
   "scripts": {
     "build": "node scripts/bundle.mjs",

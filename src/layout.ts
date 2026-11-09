@@ -1,5 +1,5 @@
 import type { Geometry, ProcessDocument, Bounds, Point, Diagnostic } from './domain.ts';
-import { BplmError } from './domain.ts';
+import { BpmnForgeError } from './domain.ts';
 const CLEARANCE = 14;
 const TASK_TYPES = new Set(['task', 'userTask', 'serviceTask', 'sendTask', 'receiveTask', 'businessRuleTask', 'callActivity']);
 interface Port { point: Point; dx: number; dy: number }
@@ -193,7 +193,7 @@ export function layoutProcess(model: ProcessDocument): Geometry {
     if (model.nodes.some(node => node.id === id && node.parent === otherId)) continue;
     if (id !== otherId && boxOverlap(label, box)) errors.push({ code: 'LABEL_OVERLAP', id, relatedIds: [otherId], bounds: label, message: 'Label overlaps an element', severity: 'error' });
   }
-  if (errors.length) throw new BplmError(1, 'Invalid layout', errors);
+  if (errors.length) throw new BpmnForgeError(1, 'Invalid layout', errors);
   const crossings: Geometry['crossings'] = [];
   const sortedFlows = [...model.flows].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   const port = (flow: typeof sortedFlows[number], side: 'source' | 'target', box: Bounds): Point => {
@@ -342,7 +342,7 @@ export function layoutProcess(model: ProcessDocument): Geometry {
     if (!chosen) { const unsatisfiable: Diagnostic = { code: 'ROUTE_UNSATISFIABLE', id: flow.id, relatedIds: [flow.source, flow.target], point: start, message: 'No collision-free orthogonal route exists; add a valid route hint or more grid space', severity: 'error' }; errors.push(...(flow.route ? nearest : [unsatisfiable])); continue; }
     edges[flow.id] = chosen; if (chosenLabel) labels[flow.id] = chosenLabel; crossings.push(...accepted);
   }
-  if (errors.length) throw new BplmError(1, 'Invalid layout hints', errors);
+  if (errors.length) throw new BpmnForgeError(1, 'Invalid layout hints', errors);
   if (!explicit && model.pools.length === 1) {
     // A single-pool automatic diagram owns every route. Fit its frame after
     // routing instead of moving nodes away from their logical cells.

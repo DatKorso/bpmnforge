@@ -1,10 +1,10 @@
 import Viewer from 'bpmn-js/lib/Viewer.js';
 
-const data = JSON.parse(document.getElementById('bplm-data')!.textContent!);
+const data = JSON.parse(document.getElementById('bpmnforge-data')!.textContent!);
 const unavailableDocuments = new Set<string>((data.unavailableDocuments ?? []).map((item: { id: string; href: string }) => `${item.id}\u0000${item.href}`));
 function documentUnavailable(ownerId: string, href: string) { return unavailableDocuments.has(`${ownerId}\u0000${href}`); }
 const viewer = new Viewer({ container: '#bpmn-canvas' });
-(window as any).bplmViewer = viewer;
+(window as any).bpmnforgeViewer = viewer;
 const canvas: any = viewer.get('canvas');
 const eventBus: any = viewer.get('eventBus');
 const diagram = document.getElementById('bpmn-canvas')!;
@@ -45,17 +45,17 @@ function installGrid() {
     return element;
   };
   // Separate canvas layer shares diagram coordinates but never contributes to its content bounds.
-  gridLayer = canvas.getLayer('bplm-grid', 500);
-  gridLayer!.setAttribute('class', 'bplm-grid');
+  gridLayer = canvas.getLayer('bpmnforge-grid', 500);
+  gridLayer!.setAttribute('class', 'bpmnforge-grid');
   gridLayer!.setAttribute('aria-hidden', 'true');
   gridLayer!.style.pointerEvents = 'none';
   const definitions = svg('defs');
-  const minor = svg('pattern', { id: 'BPLM_GridMinor', patternUnits: 'userSpaceOnUse', x: 0, y: 0, width: 20, height: 20 });
+  const minor = svg('pattern', { id: 'BPMNFORGE_GridMinor', patternUnits: 'userSpaceOnUse', x: 0, y: 0, width: 20, height: 20 });
   minor.append(svg('path', { d: 'M20 0 H0 V20', fill: 'none', stroke: '#9aadc0', 'stroke-width': 0.6, opacity: 0.55 }));
-  const major = svg('pattern', { id: 'BPLM_GridMajor', patternUnits: 'userSpaceOnUse', x: 0, y: 0, width: 100, height: 100 });
-  major.append(svg('rect', { width: 100, height: 100, fill: 'url(#BPLM_GridMinor)' }),
+  const major = svg('pattern', { id: 'BPMNFORGE_GridMajor', patternUnits: 'userSpaceOnUse', x: 0, y: 0, width: 100, height: 100 });
+  major.append(svg('rect', { width: 100, height: 100, fill: 'url(#BPMNFORGE_GridMinor)' }),
     svg('path', { d: 'M100 0 H0 V100', fill: 'none', stroke: '#708ba5', 'stroke-width': 0.9, opacity: 0.7 }));
-  gridMask = svg('mask', { id: 'BPLM_GridMask', maskUnits: 'userSpaceOnUse', maskContentUnits: 'userSpaceOnUse' }) as SVGMaskElement;
+  gridMask = svg('mask', { id: 'BPMNFORGE_GridMask', maskUnits: 'userSpaceOnUse', maskContentUnits: 'userSpaceOnUse' }) as SVGMaskElement;
   gridMaskArea = svg('rect', { fill: 'white' }) as SVGRectElement;
   gridMask.append(gridMaskArea);
   // Keep node text, gateway/event labels and participant headers clear of grid lines.
@@ -74,7 +74,7 @@ function installGrid() {
   }
   for (const b of Object.values(data.geometry.labels) as { x: number; y: number; width: number; height: number }[]) gridMask.append(svg('rect', { ...b, fill: 'black' }));
   definitions.append(minor, major, gridMask);
-  gridArea = svg('rect', { id: 'BPLM_GridArea', fill: 'url(#BPLM_GridMajor)', mask: 'url(#BPLM_GridMask)' }) as SVGRectElement;
+  gridArea = svg('rect', { id: 'BPMNFORGE_GridArea', fill: 'url(#BPMNFORGE_GridMajor)', mask: 'url(#BPMNFORGE_GridMask)' }) as SVGRectElement;
   gridLayer!.append(definitions, gridArea);
   updateGrid();
 }
@@ -170,14 +170,14 @@ function renderFlows(node: any, direction: 'incoming' | 'outgoing') {
 function selectNode(id: string, focus = false) {
   const node = nodeById.get(id); if (!node) return;
   if (selectedId) {
-    canvas.removeMarker(selectedId, 'bplm-selected');
-    for (const flow of data.model.flows.filter((item: any) => item.source === selectedId || item.target === selectedId)) canvas.removeMarker(flow.id, 'bplm-related');
+    canvas.removeMarker(selectedId, 'bpmnforge-selected');
+    for (const flow of data.model.flows.filter((item: any) => item.source === selectedId || item.target === selectedId)) canvas.removeMarker(flow.id, 'bpmnforge-related');
   }
   selectedId = id;
   if (activeStage !== node.stage) showStage(node.stage);
   reveal(id);
-  canvas.addMarker(id, 'bplm-selected');
-  for (const flow of data.model.flows.filter((item: any) => item.source === id || item.target === id)) canvas.addMarker(flow.id, 'bplm-related');
+  canvas.addMarker(id, 'bpmnforge-selected');
+  for (const flow of data.model.flows.filter((item: any) => item.source === id || item.target === id)) canvas.addMarker(flow.id, 'bpmnforge-related');
   details.replaceChildren();
   addText(details, 'h2', node.name);
   if (node.parent) {
@@ -235,16 +235,16 @@ function wireNodes() {
 }
 function renderBridges() {
   if (!data.geometry.crossings?.length) return;
-  const layer: SVGGElement = canvas.getLayer('bplm-bridges', 1000);
+  const layer: SVGGElement = canvas.getLayer('bpmnforge-bridges', 1000);
   const ns = 'http://www.w3.org/2000/svg';
   for (const crossing of data.geometry.crossings) {
     const route: { x: number; y: number }[] = data.geometry.edges[crossing.over];
     const horizontal = route.slice(1).some((point, index) => route[index].y === point.y && point.y === crossing.point.y && Math.min(route[index].x, point.x) < crossing.point.x && crossing.point.x < Math.max(route[index].x, point.x));
     const { x, y } = crossing.point;
-    const mask = document.createElementNS(ns, 'circle'); mask.setAttribute('cx', String(x)); mask.setAttribute('cy', String(y)); mask.setAttribute('r', '7'); mask.setAttribute('fill', '#fff'); mask.setAttribute('class', 'bplm-bridge-mask'); layer.append(mask);
+    const mask = document.createElementNS(ns, 'circle'); mask.setAttribute('cx', String(x)); mask.setAttribute('cy', String(y)); mask.setAttribute('r', '7'); mask.setAttribute('fill', '#fff'); mask.setAttribute('class', 'bpmnforge-bridge-mask'); layer.append(mask);
     const arc = document.createElementNS(ns, 'path');
     arc.setAttribute('d', horizontal ? `M ${x - 8} ${y} C ${x - 5} ${y - 10}, ${x + 5} ${y - 10}, ${x + 8} ${y}` : `M ${x} ${y - 8} C ${x + 10} ${y - 5}, ${x + 10} ${y + 5}, ${x} ${y + 8}`);
-    arc.setAttribute('fill', 'none'); arc.setAttribute('stroke', '#1c679e'); arc.setAttribute('stroke-width', '2.5'); arc.setAttribute('class', 'bplm-bridge'); layer.append(arc);
+    arc.setAttribute('fill', 'none'); arc.setAttribute('stroke', '#1c679e'); arc.setAttribute('stroke-width', '2.5'); arc.setAttribute('class', 'bpmnforge-bridge'); layer.append(arc);
   }
   layer.style.pointerEvents = 'none';
 }

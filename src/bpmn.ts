@@ -26,9 +26,9 @@ export async function exportBpmn(model: ProcessDocument, geometry: Geometry): Pr
   for (const annotation of sorted(model.annotations ?? [])) { const element = create('bpmn:TextAnnotation', { id: annotation.id, text: annotation.text }); refs.set(annotation.id, element); processes.get(annotation.process).artifacts.push(element); }
   for (const process of sorted(model.processes)) {
     const lanes = sorted(model.lanes.filter(lane => lane.process === process.id)).map(lane => { const element = create('bpmn:Lane', { id: lane.id, name: lane.name, flowNodeRef: sorted(model.nodes.filter(node => node.lane === lane.id && !node.parent)).map(node => refs.get(node.id)) }); refs.set(lane.id, element); return element; });
-    if (lanes.length) processes.get(process.id).laneSets = [create('bpmn:LaneSet', { id: `BPLM_Lanes_${process.id}`, lanes })];
+    if (lanes.length) processes.get(process.id).laneSets = [create('bpmn:LaneSet', { id: `BPMNFORGE_Lanes_${process.id}`, lanes })];
   }
-  const collaboration = create('bpmn:Collaboration', { id: 'BPLM_Collaboration', participants: sorted(model.pools).map(pool => { const element = create('bpmn:Participant', { id: pool.id, name: pool.name, processRef: processes.get(pool.process) }); refs.set(pool.id, element); return element; }), messageFlows: [], artifacts: [] });
+  const collaboration = create('bpmn:Collaboration', { id: 'BPMNFORGE_Collaboration', participants: sorted(model.pools).map(pool => { const element = create('bpmn:Participant', { id: pool.id, name: pool.name, processRef: processes.get(pool.process) }); refs.set(pool.id, element); return element; }), messageFlows: [], artifacts: [] });
   for (const flow of sorted(model.flows)) {
     const source = refs.get(flow.source), target = refs.get(flow.target);
     const type = flow.type === 'sequence' ? 'SequenceFlow' : flow.type === 'message' ? 'MessageFlow' : 'Association';
@@ -49,14 +49,14 @@ export async function exportBpmn(model: ProcessDocument, geometry: Geometry): Pr
     }
   }
   for (const node of model.nodes) if (node.defaultFlow) refs.get(node.id).default = refs.get(node.defaultFlow);
-  const plane = create('bpmndi:BPMNPlane', { id: 'BPLM_Plane', bpmnElement: collaboration, planeElement: [] });
+  const plane = create('bpmndi:BPMNPlane', { id: 'BPMNFORGE_Plane', bpmnElement: collaboration, planeElement: [] });
   for (const id of Object.keys(geometry.shapes).sort()) {
-    const shape = create('bpmndi:BPMNShape', { id: `BPLM_DI_${id}`, bpmnElement: refs.get(id), bounds: create('dc:Bounds', geometry.shapes[id]), isHorizontal: true, ...(model.nodes.some(node => node.id === id && node.type === 'eventSubProcess') ? { isExpanded: true } : {}) });
+    const shape = create('bpmndi:BPMNShape', { id: `BPMNFORGE_DI_${id}`, bpmnElement: refs.get(id), bounds: create('dc:Bounds', geometry.shapes[id]), isHorizontal: true, ...(model.nodes.some(node => node.id === id && node.type === 'eventSubProcess') ? { isExpanded: true } : {}) });
     if (geometry.labels[id]) shape.label = create('bpmndi:BPMNLabel', { bounds: create('dc:Bounds', geometry.labels[id]) });
     plane.planeElement.push(shape);
   }
-  for (const id of Object.keys(geometry.edges).sort()) { const edge = create('bpmndi:BPMNEdge', { id: `BPLM_DI_${id}`, bpmnElement: refs.get(id), waypoint: geometry.edges[id].map(point => create('dc:Point', point)) }); if (geometry.labels[id]) edge.label = create('bpmndi:BPMNLabel', { bounds: create('dc:Bounds', geometry.labels[id]) }); plane.planeElement.push(edge); }
-  const definitions = create('bpmn:Definitions', { id: `BPLM_Definitions_${model.id}`, targetNamespace: 'https://bplm.local/schema/1', rootElements: [...processes.values(), collaboration], diagrams: [create('bpmndi:BPMNDiagram', { id: 'BPLM_Diagram', plane })] });
+  for (const id of Object.keys(geometry.edges).sort()) { const edge = create('bpmndi:BPMNEdge', { id: `BPMNFORGE_DI_${id}`, bpmnElement: refs.get(id), waypoint: geometry.edges[id].map(point => create('dc:Point', point)) }); if (geometry.labels[id]) edge.label = create('bpmndi:BPMNLabel', { bounds: create('dc:Bounds', geometry.labels[id]) }); plane.planeElement.push(edge); }
+  const definitions = create('bpmn:Definitions', { id: `BPMNFORGE_Definitions_${model.id}`, targetNamespace: 'https://bpmnforge.local/schema/1', rootElements: [...processes.values(), collaboration], diagrams: [create('bpmndi:BPMNDiagram', { id: 'BPMNFORGE_Diagram', plane })] });
   const { xml } = await moddle.toXML(definitions, { format: true });
   const parsed = await moddle.fromXML(xml); if (parsed.warnings.length) throw new Error(`Exported BPMN failed round-trip validation: ${parsed.warnings.map((item: { message: string }) => item.message).join('; ')}`);
   return xml;

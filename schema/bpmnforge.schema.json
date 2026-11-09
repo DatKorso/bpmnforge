@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://bplm.local/schema/1",
-  "title": "BPLM process source",
+  "$id": "https://bpmnforge.local/schema/1",
+  "title": "BPMN Forge process source",
   "type": "object", "additionalProperties": false,
   "required": ["version", "id", "name", "stages", "processes", "pools", "lanes", "nodes", "flows"],
   "properties": {
@@ -16,7 +16,7 @@
     "annotations": { "type": "array", "maxItems": 200, "items": { "$ref": "#/definitions/annotation" } }
   },
   "definitions": {
-    "id": { "type": "string", "minLength": 1, "maxLength": 100, "pattern": "^(?!BPLM_)[A-Za-z_][A-Za-z0-9_.-]*$" },
+    "id": { "type": "string", "minLength": 1, "maxLength": 100, "pattern": "^(?!BPMNFORGE_)[A-Za-z_][A-Za-z0-9_.-]*$" },
     "name": { "type": "string", "minLength": 1, "maxLength": 300, "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\ufffe\\uffff]*$" },
     "text": { "type": "string", "maxLength": 20000, "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\ufffe\\uffff]*$" },
     "cell": { "type": "integer", "minimum": 0, "maximum": 500 },

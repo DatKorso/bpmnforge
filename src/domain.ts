@@ -16,7 +16,7 @@ export interface ProcessDocument extends Named {
 export interface Crossing { flows: [string, string]; point: Point; over: string }
 export interface Geometry { shapes: Record<string, Bounds>; edges: Record<string, Point[]>; labels: Record<string, Bounds>; stages: Record<string, Bounds>; viewport: Bounds; crossings: Crossing[] }
 export interface Diagnostic { code: string; id: string; message: string; severity: 'error' | 'warning' | 'info'; href?: string; relatedIds?: string[]; point?: Point; bounds?: Bounds }
-export class BplmError extends Error {
+export class BpmnForgeError extends Error {
   code: number; diagnostics: Diagnostic[];
   constructor(code: number, message: string, diagnostics: Diagnostic[] = []) { super(message); this.code = code; this.diagnostics = diagnostics; }
 }

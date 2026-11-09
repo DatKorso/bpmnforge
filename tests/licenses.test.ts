@@ -18,7 +18,7 @@ test('all emitted browser dependencies have sorted license notices, deterministi
 });
 
 test('a bundled component without a license fails; an unused input is excluded', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'bplm licensing '));
+  const dir = await mkdtemp(join(tmpdir(), 'bpmnforge licensing '));
   try {
     const dependency = join(dir, 'node_modules', 'synthetic'); await mkdir(dependency, { recursive: true });
     await writeFile(join(dependency, 'package.json'), JSON.stringify({ name: 'synthetic', version: '1.0.0', license: 'MIT' }));

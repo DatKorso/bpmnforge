@@ -35,6 +35,6 @@ export async function collectBrowserLicenses(metafile, cwd = process.cwd()) {
     }
   }
   if (!packages.size) throw new Error('Browser bundle contains no licensed dependencies');
-  return 'Third-party components included in the BPLM browser bundle.\nTheir respective license terms continue to apply.\n\n' +
+  return 'Third-party components included in the BPMN Forge browser bundle.\nTheir respective license terms continue to apply.\n\n' +
     [...packages].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, notice]) => notice).join('\n\n' + '='.repeat(72) + '\n\n') + '\n';
 }

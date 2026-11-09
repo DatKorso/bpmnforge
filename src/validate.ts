@@ -1,10 +1,10 @@
 import { Ajv } from 'ajv';
 import { readFile, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { BplmError } from './domain.ts';
+import { BpmnForgeError } from './domain.ts';
 import type { ProcessDocument, Diagnostic, Named } from './domain.ts';
 
-const schema = JSON.parse(await readFile(new URL('../schema/bplm.schema.json', import.meta.url), 'utf8'));
+const schema = JSON.parse(await readFile(new URL('../schema/bpmnforge.schema.json', import.meta.url), 'utf8'));
 const checkSchema = new Ajv({ allErrors: true, strict: true }).compile(schema);
 
 export async function validateProcess(input: unknown, options: { htmlPath: string }): Promise<{ model: ProcessDocument; diagnostics: Diagnostic[] }> {
@@ -12,7 +12,7 @@ export async function validateProcess(input: unknown, options: { htmlPath: strin
   const report = (code: string, id: string, message: string, severity: 'error' | 'warning' = 'error') => diagnostics.push({ code, id, message, severity });
   const finish = () => {
     diagnostics.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : a.code < b.code ? -1 : a.code > b.code ? 1 : a.message < b.message ? -1 : 1);
-    if (diagnostics.some(item => item.severity === 'error')) throw new BplmError(1, 'Invalid process', diagnostics);
+    if (diagnostics.some(item => item.severity === 'error')) throw new BpmnForgeError(1, 'Invalid process', diagnostics);
   };
   if (!checkSchema(input)) {
     for (const error of checkSchema.errors ?? []) {

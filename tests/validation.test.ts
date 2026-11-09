@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateProcess } from '../src/validate.ts';
-import { BplmError } from '../src/domain.ts';
+import { BpmnForgeError } from '../src/domain.ts';
 
 export const example = () => ({ version: 1, id: 'Example', name: 'Процесс', stages: [{ id: 'Stage', name: 'Этап' }], processes: [{ id: 'Process', name: 'Работа' }], pools: [{ id: 'Pool', name: 'Команда', process: 'Process' }], lanes: [{ id: 'Lane', name: 'Исполнитель', process: 'Process' }], nodes: [{ id: 'Start', type: 'start', name: 'Начало', process: 'Process', lane: 'Lane', stage: 'Stage' }, { id: 'Task', type: 'task', name: 'Задача', process: 'Process', lane: 'Lane', stage: 'Stage' }, { id: 'End', type: 'end', name: 'Конец', process: 'Process', lane: 'Lane', stage: 'Stage' }], flows: [{ id: 'First', type: 'sequence', source: 'Start', target: 'Task' }, { id: 'Last', type: 'sequence', source: 'Task', target: 'End' }] });
-const options = { htmlPath: '/tmp/bplm-validation/process.html' };
+const options = { htmlPath: '/tmp/bpmnforge-validation/process.html' };
 for (const id of Object.getOwnPropertyNames(Object.prototype)) {
   test(`Object.prototype ID is reserved in every entity collection: ${id}`, async () => {
     for (const collection of ['document', 'stages', 'processes', 'pools', 'lanes', 'nodes', 'flows', 'annotations']) {
@@ -16,7 +16,7 @@ for (const id of Object.getOwnPropertyNames(Object.prototype)) {
   });
 }
 async function rejectsCode(input: any, code: string, id: string) {
-  await assert.rejects(validateProcess(input, options), error => error instanceof BplmError && error.code === 1 && error.diagnostics.some(d => d.code === code && d.id === id));
+  await assert.rejects(validateProcess(input, options), error => error instanceof BpmnForgeError && error.code === 1 && error.diagnostics.some(d => d.code === code && d.id === id));
 }
 test('duplicate IDs are rejected with their element ID', async () => {
   const input = example(); input.nodes.push({ ...input.nodes[1] });
@@ -34,7 +34,7 @@ test('lanes and pools must belong to existing matching processes', async () => {
 test('HTTPS and missing relative documents are handled from HTML location', async () => { const input: any = example(); input.nodes[1].links = [{ name: 'Сайт', href: 'https://example.org/help' }, { name: 'Документ', href: 'docs/нет.md' }]; const result = await validateProcess(input, options); assert.ok(result.diagnostics.some(d => d.code === 'MISSING_DOCUMENT' && d.id === 'Task' && d.href === 'docs/нет.md' && d.severity === 'warning')); });
 for (const href of ['javascript:alert(1)', 'data:text/html,evil', '//example.org', 'file:///etc/passwd', '../etc/passwd', 'https://user:password@example.org', 'java\nscript:alert(1)', '%6aavascript:alert(1)']) test(`unsafe URL rejected: ${JSON.stringify(href)}`, async () => { const input: any = example(); input.nodes[1].links = [{ name: 'Unsafe', href }]; await rejectsCode(input, 'UNSAFE_URL', 'Task'); });
 test('source text is data and permits literal HTML without execution', async () => { const input: any = example(); input.nodes[1].description = '</script><script>window.pwned=true</script>'; const result = await validateProcess(input, options); assert.equal(result.model.nodes[1].description, input.nodes[1].description); });
-test('reserved IDs and size limits prevent generated ID collisions and oversized graphs', async () => { const input: any = example(); input.nodes[1].id = 'BPLM_DI_Start'; await rejectsCode(input, 'SCHEMA', 'BPLM_DI_Start'); input.nodes[1].id = 'Task'; input.nodes[1].description = 'x'.repeat(20001); await rejectsCode(input, 'SCHEMA', 'Task'); });
+test('reserved IDs and size limits prevent generated ID collisions and oversized graphs', async () => { const input: any = example(); input.nodes[1].id = 'BPMNFORGE_DI_Start'; await rejectsCode(input, 'SCHEMA', 'BPMNFORGE_DI_Start'); input.nodes[1].id = 'Task'; input.nodes[1].description = 'x'.repeat(20001); await rejectsCode(input, 'SCHEMA', 'Task'); });
 test('annotation associations and AND gateways are accepted and invalid association is rejected', async () => { const input: any = example(); input.nodes[1].type = 'and'; input.annotations = [{ id: 'Note', name: 'Примечание', text: 'Проверять документы', process: 'Process', lane: 'Lane', stage: 'Stage' }]; input.flows.push({ id: 'NoteLink', type: 'association', source: 'Note', target: 'Task' }); assert.ok((await validateProcess(input, options)).model); input.flows.at(-1).source = 'Start'; await rejectsCode(input, 'ASSOCIATION_ENDPOINT', 'NoteLink'); });
 test('wrong stage and cross-process lane are diagnosed', async () => { const input: any = example(); input.nodes[1].stage = 'MissingStage'; await rejectsCode(input, 'REFERENCE', 'Task'); input.nodes[1].stage = 'Stage'; input.lanes[0].process = 'Other'; await rejectsCode(input, 'LANE_PROCESS', 'Task'); });
 for (const href of [' javascript:alert(1)', '%20javascript:alert(1)', 'https://example.org\n']) test(`trimmed unsafe URL rejected: ${JSON.stringify(href)}`, async () => { const input: any = example(); input.links = [{ name: 'Unsafe', href }]; await rejectsCode(input, 'UNSAFE_URL', 'Example'); });

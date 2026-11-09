@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { BplmError } from './domain.ts';
+import { BpmnForgeError } from './domain.ts';
 import { buildProcess, prepareProcess } from './build.ts';
 export async function runCli(args: string[], io = { out: (text: string) => console.log(text), err: (text: string) => console.error(text) }): Promise<number> {
   const json = args.includes('--json');
@@ -7,14 +7,14 @@ export async function runCli(args: string[], io = { out: (text: string) => conso
   try {
     const [, sourcePath, ...flags] = args;
     if (command === 'version' && args.length === 1) { const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')); io.out(pkg.version); return 0; }
-    if (!['build', 'validate'].includes(command) || !sourcePath || sourcePath.startsWith('--')) throw new BplmError(2, 'Usage: bplm validate|build source.bplm.json [--json] [--html output.html] [--bpmn output.bpmn]; bplm version');
+    if (!['build', 'validate'].includes(command) || !sourcePath || sourcePath.startsWith('--')) throw new BpmnForgeError(2, 'Usage: bpmnforge validate|build source.bpmnforge.json [--json] [--html output.html] [--bpmn output.bpmn]; bpmnforge version');
     const options: { sourcePath: string; htmlPath?: string; bpmnPath?: string } = { sourcePath };
     const seen = new Set<string>();
     for (let i = 0; i < flags.length;) {
       const flag = flags[i];
       if (flag === '--json' && !seen.has(flag)) { seen.add(flag); i++; continue; }
       const value = flags[i + 1];
-      if (!['--html', '--bpmn'].includes(flag) || !value || value.startsWith('--') || seen.has(flag)) throw new BplmError(2, 'ARGUMENT: invalid output option');
+      if (!['--html', '--bpmn'].includes(flag) || !value || value.startsWith('--') || seen.has(flag)) throw new BpmnForgeError(2, 'ARGUMENT: invalid output option');
       seen.add(flag); if (flag === '--html') options.htmlPath = value; else options.bpmnPath = value; i += 2;
     }
     const result = command === 'build' ? await buildProcess(options) : await prepareProcess(options);
@@ -22,7 +22,7 @@ export async function runCli(args: string[], io = { out: (text: string) => conso
     for (const diagnostic of result.diagnostics) io.err(`${diagnostic.severity} ${diagnostic.code} [${diagnostic.id}]: ${diagnostic.message}`);
     io.out(command === 'build' ? 'Built HTML and BPMN' : 'Valid process'); return 0;
   } catch (error) {
-    if (error instanceof BplmError) {
+    if (error instanceof BpmnForgeError) {
       if (json) { io.out(JSON.stringify({ status: 'error', command, code: error.code, diagnostics: error.diagnostics.length ? error.diagnostics : [{ code: error.message.match(/^([A-Z_]+):/)?.[1] ?? 'ERROR', id: args[1] ?? 'cli', message: error.message, severity: 'error' }] })); return error.code; }
       if (error.diagnostics.length) for (const diagnostic of error.diagnostics) io.err(`${diagnostic.code} [${diagnostic.id}]: ${diagnostic.message}`); else io.err(error.message); return error.code;
     }

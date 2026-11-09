@@ -20,13 +20,13 @@ export const simple = {
   ],
   flows: [{ id: 'ToCheck', type: 'sequence', source: 'Start', target: 'Check' }, { id: 'ToEnd', type: 'sequence', source: 'Check', target: 'End' }]
 };
-const bin = resolve('bin/bplm.mjs');
+const bin = resolve('bin/bpmnforge.mjs');
 export function cli(args: string[], cwd?: string) { return spawnSync(process.execPath, [bin, ...args], { encoding: 'utf8', cwd }); }
 
 test('tracer: permanent CLI generates matching HTML and BPMN with DI', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'bplm tracer '));
+  const dir = await mkdtemp(join(tmpdir(), 'bpmnforge tracer '));
   try {
-    const source = join(dir, 'source.bplm.json');
+    const source = join(dir, 'source.bpmnforge.json');
     const html = join(dir, 'process.html'); const bpmn = join(dir, 'process.bpmn');
     await writeFile(source, JSON.stringify(simple));
     const result = cli(['build', source, '--html', html, '--bpmn', bpmn]);
@@ -35,7 +35,7 @@ test('tracer: permanent CLI generates matching HTML and BPMN with DI', async () 
     for (const id of ['Start', 'Check', 'End', 'ToCheck', 'ToEnd']) { assert.ok(xml.includes(`id="${id}"`)); assert.ok(page.includes(id)); }
     assert.match(xml, /BPMNShape/); assert.match(xml, /Bounds/); assert.match(xml, /waypoint/);
     assert.match(page, /bpmn-canvas/);
-    const browser = await chromium.launch({ channel: process.env.BPLM_BROWSER_CHANNEL });
+    const browser = await chromium.launch({ channel: process.env.BPMNFORGE_BROWSER_CHANNEL });
     try {
       const context = await browser.newContext({ offline: true }); const tab = await context.newPage();
       await tab.goto(pathToFileURL(html).href);

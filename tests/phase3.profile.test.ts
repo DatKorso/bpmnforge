@@ -7,9 +7,9 @@ import { spawnSync } from 'node:child_process';
 import { BpmnModdle } from 'bpmn-moddle';
 import { validateProcess } from '../src/validate.ts';
 import { exportBpmn } from '../src/bpmn.ts';
-import { BplmError, type Geometry } from '../src/domain.ts';
+import { BpmnForgeError, type Geometry } from '../src/domain.ts';
 
-const bin = resolve('bin/bplm.mjs');
+const bin = resolve('bin/bpmnforge.mjs');
 const cli = (args: string[]) => spawnSync(process.execPath, [bin, ...args], { encoding: 'utf8' });
 const source = () => ({
   version: 1, id: 'Profile', name: 'Проверка',
@@ -48,12 +48,12 @@ const geometryFor = (input: any): Geometry => ({
 });
 
 async function rejects(input: any, code: string, id: string) {
-  await assert.rejects(validateProcess(input, { htmlPath: '/tmp/bplm-profile.html' }), error => error instanceof BplmError && error.diagnostics.some(item => item.code === code && item.id === id));
+  await assert.rejects(validateProcess(input, { htmlPath: '/tmp/bpmnforge-profile.html' }), error => error instanceof BpmnForgeError && error.diagnostics.some(item => item.code === code && item.id === id));
 }
 
 test('specialized tasks and three calls share one local shared process', async () => {
   const input = extendedSource();
-  const result = await validateProcess(input, { htmlPath: '/tmp/bplm-profile.html' }).catch(error => error);
+  const result = await validateProcess(input, { htmlPath: '/tmp/bpmnforge-profile.html' }).catch(error => error);
   assert.ok(!(result instanceof Error), result.diagnostics?.map((item: any) => `${item.code} [${item.id}]`).join(', '));
   const { model } = result;
   const xml = await exportBpmn(model, geometryFor(input));
@@ -112,7 +112,7 @@ const eventSource = (): any => {
 
 test('timer and one-level event subprocess round-trip with owned flows and DI', async () => {
   const input = eventSource();
-  const result = await validateProcess(input, { htmlPath: '/tmp/bplm-profile.html' }).catch(error => error);
+  const result = await validateProcess(input, { htmlPath: '/tmp/bpmnforge-profile.html' }).catch(error => error);
   assert.ok(!(result instanceof Error), result.diagnostics?.map((item: any) => `${item.code} [${item.id}]`).join(', '));
   const xml = await exportBpmn(result.model, geometryFor(input));
   const { rootElement, warnings } = await new BpmnModdle().fromXML(xml);
@@ -156,7 +156,7 @@ test('invalid event definitions, containment and nesting report IDs', async () =
 });
 
 test('CLI builds userTask with matching offline HTML and BPMN DI; invalid type preserves outputs', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'bplm profile '));
+  const dir = await mkdtemp(join(tmpdir(), 'bpmnforge profile '));
   try {
     const input = join(dir, 'source.json'), html = join(dir, 'process.html'), bpmn = join(dir, 'process.bpmn');
     await writeFile(input, JSON.stringify(source()));

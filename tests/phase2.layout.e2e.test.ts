@@ -9,7 +9,7 @@ import { chromium } from '@playwright/test';
 import { layoutProcess } from '../src/layout.ts';
 import { exportBpmn } from '../src/bpmn.ts';
 import { renderStandaloneHtml } from '../src/html.ts';
-import { BplmError, type Point, type Bounds, type ProcessDocument } from '../src/domain.ts';
+import { BpmnForgeError, type Point, type Bounds, type ProcessDocument } from '../src/domain.ts';
 
 const simple = JSON.parse(await readFile(new URL('./fixtures/minimal.json', import.meta.url), 'utf8')) as ProcessDocument;
 function intersects(points: Point[], box: Bounds): boolean {
@@ -26,15 +26,15 @@ test('route around unrelated shape and label, reject through-shape route hint wi
   const geometry = layoutProcess(model);
   assert.equal(intersects(geometry.edges.Long, geometry.shapes.Check), false);
   model.flows[0].route = [geometry.edges.Long[0], { x: geometry.shapes.Check.x + 20, y: geometry.edges.Long[0].y }, { x: geometry.shapes.Check.x + 20, y: geometry.shapes.End.y + geometry.shapes.End.height / 2 }, geometry.edges.Long.at(-1)!];
-  assert.throws(() => layoutProcess(model), error => error instanceof BplmError && error.diagnostics.some(d => d.id === 'Long' && d.relatedIds?.includes('Check') && d.point));
+  assert.throws(() => layoutProcess(model), error => error instanceof BpmnForgeError && error.diagnostics.some(d => d.id === 'Long' && d.relatedIds?.includes('Check') && d.point));
 });
 
 test('CLI JSON success and failure preserve prior outputs', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'bplm json '));
+  const dir = await mkdtemp(join(tmpdir(), 'bpmnforge json '));
   try {
     const source = join(dir, 'source.json'), html = join(dir, 'out.html'), bpmn = join(dir, 'out.bpmn');
     const model = structuredClone(simple); await writeFile(source, JSON.stringify(model));
-    const cli = (command: string) => spawnSync(process.execPath, [resolve('bin/bplm.mjs'), command, source, '--json', '--html', html, '--bpmn', bpmn], { encoding: 'utf8' });
+    const cli = (command: string) => spawnSync(process.execPath, [resolve('bin/bpmnforge.mjs'), command, source, '--json', '--html', html, '--bpmn', bpmn], { encoding: 'utf8' });
     const valid = cli('validate'); assert.equal(valid.status, 0, valid.stderr);
     const result = JSON.parse(valid.stdout); assert.equal(result.status, 'ok'); assert.ok(result.geometry.edges.ToCheck);
     const built = cli('build'); assert.equal(built.status, 0, built.stderr); assert.equal(JSON.parse(built.stdout).status, 'ok');
@@ -47,14 +47,14 @@ test('CLI JSON success and failure preserve prior outputs', async () => {
 });
 
 test('CLI JSON cell conflict identifies both blocks and a shared location', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'bplm cell conflict '));
+  const dir = await mkdtemp(join(tmpdir(), 'bpmnforge cell conflict '));
   try {
     const source = join(dir, 'source.json');
     const model = structuredClone(simple);
     model.nodes[1].column = 1;
     model.nodes[2].column = 1;
     await writeFile(source, JSON.stringify(model));
-    const result = spawnSync(process.execPath, [resolve('bin/bplm.mjs'), 'validate', source, '--json'], { encoding: 'utf8' });
+    const result = spawnSync(process.execPath, [resolve('bin/bpmnforge.mjs'), 'validate', source, '--json'], { encoding: 'utf8' });
     assert.equal(result.status, 1);
     const diagnostic = JSON.parse(result.stdout).diagnostics.find((item: { code: string }) => item.code === 'CELL_CONFLICT');
     assert.equal(diagnostic.id, 'End');
@@ -90,12 +90,12 @@ test('checked right-angle crossing is recorded and bridged without changing BPMN
   assert.deepEqual(geometry.crossings, [{ flows: ['Across', 'Down'], point: { x: down[0].x, y: crossingY }, over: 'Down' }]);
   const xml = await exportBpmn(model, geometry);
   for (const point of down) assert.ok(xml.includes(`<di:waypoint x="${point.x}" y="${point.y}"`), 'DI preserves both ends of the crossing route');
-  const dir = await mkdtemp(join(tmpdir(), 'bplm bridge ')); const browser = await chromium.launch({ channel: process.env.BPLM_BROWSER_CHANNEL });
+  const dir = await mkdtemp(join(tmpdir(), 'bpmnforge bridge ')); const browser = await chromium.launch({ channel: process.env.BPMNFORGE_BROWSER_CHANNEL });
   try {
     const html = join(dir, 'bridge.html'); await writeFile(html, await renderStandaloneHtml(model, geometry, xml));
     const page = await browser.newPage(); await page.goto(pathToFileURL(html).href); await page.waitForSelector('body[data-ready="true"]');
-    assert.equal(await page.locator('.bplm-bridge').count(), 1); assert.equal(await page.locator('.bplm-bridge-mask').count(), 1);
-    const rendered = await page.evaluate(() => (window as any).bplmViewer.get('elementRegistry').get('Down').waypoints.map((p: Point) => ({ x: p.x, y: p.y })));
+    assert.equal(await page.locator('.bpmnforge-bridge').count(), 1); assert.equal(await page.locator('.bpmnforge-bridge-mask').count(), 1);
+    const rendered = await page.evaluate(() => (window as any).bpmnforgeViewer.get('elementRegistry').get('Down').waypoints.map((p: Point) => ({ x: p.x, y: p.y })));
     assert.deepEqual(rendered, down);
   } finally { await browser.close(); await rm(dir, { recursive: true, force: true }); }
 });
