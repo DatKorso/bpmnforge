@@ -72,7 +72,7 @@ npx --no-install bpmnforge build "описание процесса.bpmnforge.js
 - [Руководство пользователя](docs/USER-GUIDE.md): CLI, имена файлов, ссылки, навигация, BPMN-профиль и раскладка.
 - [Руководство для LLM](docs/LLM-GUIDE.md): подготовка JSON и цикл исправлений по диагностике.
 - [JSON Schema](schema/bpmnforge.schema.json) — точная структура формата версии 1.
-- [Изменения 0.1.0](CHANGELOG.md) и [локальная проверка выпуска](docs/RELEASING.md).
+- [Изменения 0.1.0](CHANGELOG.md) и [порядок выпуска новых версий](docs/RELEASING.md).
 
 ```sh
 npm ci
