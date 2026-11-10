@@ -47,6 +47,7 @@ test('grid is opt-in, follows diagram coordinates, and preserves interaction and
         const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
         await page.goto(pathToFileURL(htmlPath).href);
         await page.waitForSelector('body[data-ready="true"]');
+        await page.locator('#settings summary').click();
         const checkbox = page.getByRole('checkbox', { name: 'Сетка', exact: true });
         const grid = page.locator('#BPMNFORGE_GridArea');
         assert.equal(await checkbox.isChecked(), false, 'grid starts disabled');
@@ -77,7 +78,7 @@ test('grid is opt-in, follows diagram coordinates, and preserves interaction and
         });
         assert.deepEqual(aligned.gridMatrix, aligned.diagramMatrix, 'grid moves and scales with diagram coordinates');
         assert.equal(aligned.coversView, true, 'grid fills the panned viewport');
-        await page.getByRole('button', { name: 'Обзор схемы', exact: true }).click();
+        await page.getByRole('button', { name: 'Вся схема', exact: true }).click();
         assert.equal(await checkbox.isChecked(), true, 'overview preserves grid toggle');
         assert.deepEqual(await page.evaluate(() => (window as any).bpmnforgeViewer.get('canvas').viewbox().inner), initial.inner);
         const after = await page.evaluate(() => {
@@ -91,7 +92,7 @@ test('grid is opt-in, follows diagram coordinates, and preserves interaction and
         assert.equal(await checkbox.isChecked(), false); assert.equal(await grid.isVisible(), false);
         await page.keyboard.press('Space'); assert.equal(await grid.isVisible(), true);
         await page.reload(); await page.waitForSelector('body[data-ready="true"]');
-        assert.equal(await checkbox.isChecked(), false, 'reload restores the disabled default');
+        assert.equal(await page.locator('#grid-toggle').isChecked(), false, 'reload restores the disabled default');
         assert.equal(await grid.isVisible(), false); assert.deepEqual(errors, []);
       } finally { await context.close(); }
     }

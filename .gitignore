@@ -4,6 +4,7 @@ dist/
 *.tgz
 .DS_Store
 .planning/
+# Private process sources, documents, experiments and generated previews.
 .private/
 private/
 examples/

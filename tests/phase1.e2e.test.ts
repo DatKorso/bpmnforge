@@ -35,12 +35,11 @@ test('consumer bin handles Unicode paths and standalone HTML opens offline at bo
       for (const flow of model.flows) assert.equal(await page.locator(`.djs-connection[data-element-id="${flow.id}"]`).count(), 1, flow.id);
       assert.equal(await page.locator('h1').textContent(), model.name); assert.equal(await page.evaluate(() => (window as any).pwned), undefined);
       assert.equal(await page.locator('body > script').count(), 2); assert.equal(await page.locator('.bjs-powered-by').isVisible(), true);
-      for (const kind of ['Stage', 'Process', 'Pool', 'Lane', 'Annotation', 'Document']) assert.equal(await page.getByRole('link', { name: `${kind} document`, exact: true }).getAttribute('href'), 'документы/инструкция.html');
+      assert.equal(await page.locator('#documents-panel').count(), 0);
       const embedded = await page.locator('#bpmnforge-data').textContent(); const data = JSON.parse(embedded!); assert.equal(data.xml, xml);
       const rendered = await page.evaluate(() => { const registry = (window as any).bpmnforgeViewer.get('elementRegistry'); return Object.fromEntries(registry.getAll().filter((element: any) => !element.labelTarget).map((element: any) => [element.id, element.waypoints ? element.waypoints.map((p: any) => ({ x: p.x, y: p.y })) : { x: element.x, y: element.y, width: element.width, height: element.height }])); });
       for (const [id, bounds] of Object.entries(data.geometry.shapes)) assert.deepEqual(rendered[id], bounds, id);
       for (const [id, points] of Object.entries(data.geometry.edges)) assert.deepEqual(rendered[id], points, id);
-      await page.getByRole('link', { name: '<img onerror=alert(1)>Документ', exact: true }).click(); await page.waitForURL(pathToFileURL(join(docs, 'инструкция.html')).href); assert.equal(await page.title(), 'Инструкция');
       assert.deepEqual(requests, []); assert.deepEqual(errors, []); await context.close();
     }
   } finally { await browser.close(); await rm(dir, { recursive: true, force: true }); }

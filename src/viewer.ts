@@ -1,8 +1,9 @@
 import Viewer from 'bpmn-js/lib/Viewer.js';
+import { textLines } from './text.ts';
+import { READABLE } from './profile.ts';
+import { readingFragment, stageEntries } from './reading.ts';
 
 const data = JSON.parse(document.getElementById('bpmnforge-data')!.textContent!);
-const unavailableDocuments = new Set<string>((data.unavailableDocuments ?? []).map((item: { id: string; href: string }) => `${item.id}\u0000${item.href}`));
-function documentUnavailable(ownerId: string, href: string) { return unavailableDocuments.has(`${ownerId}\u0000${href}`); }
 const viewer = new Viewer({ container: '#bpmn-canvas' });
 (window as any).bpmnforgeViewer = viewer;
 const canvas: any = viewer.get('canvas');
@@ -13,11 +14,12 @@ const stages = document.getElementById('stages')!;
 const previousStages = document.getElementById('stages-prev') as HTMLButtonElement;
 const nextStages = document.getElementById('stages-next') as HTMLButtonElement;
 const overview = document.getElementById('overview') as HTMLButtonElement;
-const overviewNote = document.getElementById('overview-note')!;
 const fit = document.getElementById('fit') as HTMLButtonElement;
 const zoomValue = document.getElementById('zoom-value')!;
 document.getElementById('title')!.textContent = data.model.name;
-overview.textContent = 'Обзор схемы';
+overview.textContent = 'Вся схема';
+const dimToggle = document.getElementById('dim-toggle') as HTMLInputElement;
+dimToggle.checked = false;
 
 const gridToggle = document.getElementById('grid-toggle') as HTMLInputElement;
 gridToggle.checked = false;
@@ -29,6 +31,7 @@ let gridMaskArea: SVGRectElement | undefined;
 function updateGrid() {
   if (!gridLayer || !gridArea || !gridMask || !gridMaskArea) return;
   gridLayer.style.display = gridToggle.checked ? '' : 'none';
+  if (!gridToggle.checked) return;
   const view = canvas.viewbox();
   const bounds = { x: Math.floor(view.x / 100) * 100 - 100, y: Math.floor(view.y / 100) * 100 - 100,
     width: Math.ceil(view.width / 100) * 100 + 300, height: Math.ceil(view.height / 100) * 100 + 300 };
@@ -79,60 +82,159 @@ function installGrid() {
   updateGrid();
 }
 gridToggle.addEventListener('change', updateGrid);
-eventBus.on('canvas.viewbox.changed', updateGrid);
-eventBus.on('canvas.resized', updateGrid);
 
+eventBus.on('canvas.resized', schedulePresentation);
+
+type Box = { x: number; y: number; width: number; height: number };
+type Camera = { x: number; y: number; scale: number };
 let activeStage: string | null = null;
+let imported = false;
+let readingMode: 'read' | 'whole' = 'read';
+const stageMode = document.getElementById('stage-mode') as HTMLSelectElement;
+const entrySelect = document.getElementById('entry-select') as HTMLSelectElement;
+const entryControl = document.getElementById('entry-control')!;
+const readingContext = document.getElementById('reading-context')!;
+const cameras = new Map<string, Camera>();
+const stageModes = new Map<string, 'read' | 'whole'>();
+const entryChoices = new Map<string, string>();
+let currentCamera: Camera | undefined;
+const overlays = (id: string) => { const layer = document.createElement('div'); layer.id = id; layer.className = 'bpmnforge-overlay'; diagram.append(layer); return layer; };
+const associationLabels = overlays('association-labels');
+const laneContext = document.getElementById('lane-context')!;
+function camera(): Camera { const view = canvas.viewbox(); return { x: view.x + view.width / 2, y: view.y + view.height / 2, scale: view.scale }; }
+function applyCamera(view: Camera) {
+  const outer = canvas.viewbox().outer;
+  canvas.viewbox({ x: view.x - outer.width / view.scale / 2, y: view.y - outer.height / view.scale / 2, width: outer.width / view.scale, height: outer.height / view.scale });
+}
+function saveStage() { if (activeStage && imported) { cameras.set(activeStage, camera()); stageModes.set(activeStage, readingMode); } }
 function updateZoom() { zoomValue.textContent = `${Math.round(canvas.zoom() * 100)}%`; }
 function markStage(id: string | null) {
   activeStage = id;
   overview.setAttribute('aria-pressed', String(id === null));
-  overviewNote.hidden = id !== null;
+  stageMode.disabled = id === null;
   fit.textContent = id === null ? 'Вписать схему' : 'К началу этапа';
   for (const button of stages.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.stage === id));
+  readingContext.textContent = id ? `Этап: ${data.model.stages.find((s: any) => s.id === id)?.name ?? id}` : 'Вся схема';
+  laneContext.hidden = id === null;
+  document.getElementById('diagram-shell')!.classList.toggle('is-overview', id === null);
+  canvas.resized();
+  applyStageDimming();
 }
-function fitScale(bounds: { width: number; height: number }) {
+function applyStageDimming() {
+  const id = dimToggle.checked ? activeStage : null;
+  for (const item of [...data.model.nodes, ...(data.model.annotations ?? [])]) {
+    for (const key of [item.id, `${item.id}_label`]) registry.getGraphics(key)?.classList.toggle('bpmnforge-muted', !!id && item.stage !== id);
+  }
+  for (const flow of data.model.flows) {
+    const muted = !!id && nodeStages.get(flow.source) !== id && nodeStages.get(flow.target) !== id;
+    for (const key of [flow.id, `${flow.id}_label`]) registry.getGraphics(key)?.classList.toggle('bpmnforge-muted', muted);
+    associationLabelById.get(flow.id)?.classList.toggle('bpmnforge-muted', muted);
+  }
+}
+function fitScale(bounds: { width: number; height: number }, margin = 32) {
   const outer = canvas.viewbox().outer;
-  return Math.min(2, Math.min((outer.width - 50) / (bounds.width + 60), (outer.height - 50) / (bounds.height + 60)));
+  const scale = Math.max(0.001, Math.min(2, (outer.width - margin * 2) / bounds.width, (outer.height - margin * 2) / bounds.height));
+  // Canvas reports scale to three decimals. Round down so a wide overview
+  // cannot consume its reserved frame through that rounding.
+  return Math.max(0.001, Math.floor(scale * 1000) / 1000);
 }
-function setView(bounds: { x: number; y: number; width: number; height: number }, minimumScale = 0, center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }) {
-  const outer = canvas.viewbox().outer;
-  const fittedScale = fitScale(bounds);
-  const scale = Math.max(minimumScale, fittedScale);
-  const width = outer.width / scale, height = outer.height / scale;
-  canvas.viewbox({ x: center.x - width / 2, y: center.y - height / 2, width, height });
-  updateZoom();
+function setView(bounds: Box, scale = fitScale(bounds)) { applyCamera({ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2, scale }); }
+function union(boxes: Box[]): Box {
+  const x = Math.min(...boxes.map(b => b.x)), y = Math.min(...boxes.map(b => b.y));
+  return { x, y, width: Math.max(...boxes.map(b => b.x + b.width)) - x, height: Math.max(...boxes.map(b => b.y + b.height)) - y };
 }
-function showOverview() { markStage(null); setView(canvas.viewbox().inner); status.textContent = 'Обзор схемы: выберите этап для чтения'; }
-function stageFocus(id: string, bounds: { x: number; y: number; width: number; height: number }) {
-  const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
-  if (fitScale(bounds) >= 1.2) return center;
-  const nodes = data.model.nodes.filter((node: any) => node.stage === id && data.geometry.shapes[node.id] && node.type !== 'eventSubProcess');
-  const entries = nodes.filter((node: any) => node.type === 'start' || node.type === 'conditionalStart');
-  const first = (entries.length ? entries : nodes).sort((a: any, b: any) => {
-    const left = data.geometry.shapes[a.id], right = data.geometry.shapes[b.id];
-    return left.x - right.x || left.y - right.y;
-  })[0];
-  if (!first) return center;
-  const shape = data.geometry.shapes[first.id];
-  const visibleWidth = canvas.viewbox().outer.width / 1.2;
-  return { x: shape.x + shape.width / 2 + visibleWidth * 0.38, y: shape.y + shape.height / 2 };
+function nodeBounds(id: string): Box { const b = data.geometry.shapes[id], label = data.geometry.labels[id]; return label ? union([b, label]) : b; }
+function stageContentBounds(id: string): Box {
+  const elements = [...data.model.nodes, ...(data.model.annotations ?? [])].filter((item: any) => item.stage === id);
+  const boxes: Box[] = elements.map((item: any) => nodeBounds(item.id));
+  const ids = new Set(elements.map((item: any) => item.id));
+  for (const flow of data.model.flows.filter((f: any) => ids.has(f.source) && ids.has(f.target))) {
+    if (data.geometry.labels[flow.id]) boxes.push(data.geometry.labels[flow.id]);
+  }
+  return boxes.length ? union(boxes) : data.geometry.stages[id];
 }
-function showStage(id: string) {
+function entries(id: string): any[] {
+  return stageEntries(data.model, data.geometry, id);
+}
+function populateEntries(id: string) {
+  const choices = entries(id); entrySelect.replaceChildren();
+  for (const node of choices) { const option = document.createElement('option'); option.value = node.id; option.textContent = node.name; entrySelect.append(option); }
+  entryControl.hidden = choices.length < 2;
+  if (entryChoices.has(id) && choices.some(n => n.id === entryChoices.get(id))) entrySelect.value = entryChoices.get(id)!;
+}
+function readFragment(id: string, entryId = entrySelect.value, position = true) {
+  const fragment = readingFragment(data.model, data.geometry, id, entryId, canvas.viewbox().outer);
+  const transitions = document.getElementById('fragment-transitions')!; transitions.replaceChildren(); transitions.hidden = true;
+  if (!fragment) { setView(stageContentBounds(id)); return; }
+  entryChoices.set(id, fragment.entry);
+  if (position) setView(fragment.bounds, fragment.scale);
+  for (const target of fragment.missingSuccessors) {
+    const node = data.model.nodes.find((n: any) => n.id === target);
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = `Далее: ${node.name}`;
+    button.addEventListener('click', () => selectNode(target, true)); transitions.append(button); transitions.hidden = false;
+  }
+  // Runtime evidence also covers a manually supplied entry larger than the screen.
+  (window as any).bpmnforgeReading = { ...fragment, profile: READABLE.id };
+}
+function showOverview() { saveStage(); clearSelection(); markStage(null); entryControl.hidden = true; document.getElementById('fragment-transitions')!.hidden = true; setView(data.geometry.viewport); updateOverlays(); status.textContent = 'Вся схема'; }
+function showStage(id: string, reset = false, explicit = true) {
   const stage = data.model.stages.find((item: any) => item.id === id);
   if (!stage || !data.geometry.stages[id]) return;
-  const bounds = data.geometry.stages[id];
-  markStage(id); setView(bounds, 1.2, stageFocus(id, bounds)); status.textContent = `Этап: ${stage.name}`;
+  saveStage(); if (explicit) clearSelection();
+  markStage(id); populateEntries(id);
+  readingMode = reset ? 'read' : stageModes.get(id) ?? 'read'; stageMode.value = readingMode;
+  if (reset) { readingMode = 'read'; stageMode.value = 'read'; cameras.delete(id); }
+  if (!reset && cameras.has(id)) { applyCamera(cameras.get(id)!); if (readingMode === 'read') readFragment(id, entrySelect.value, false); }
+  else if (readingMode === 'whole') setView(stageContentBounds(id));
+  else readFragment(id);
+  document.getElementById('fragment-transitions')!.hidden = readingMode === 'whole' || !document.getElementById('fragment-transitions')!.childElementCount;
+  status.textContent = `Этап: ${stage.name}`; updateOverlays();
 }
 function adjustZoom(factor: number, center?: { x: number; y: number }) {
-  canvas.zoom(Math.max(0.2, Math.min(3, canvas.zoom() * factor)), center); updateZoom();
+  const current = canvas.zoom();
+  // Automatic overview and manual controls share the same range; never reverse the requested direction.
+  const lower = Math.min(current, fitScale(data.geometry.viewport), 0.05) / 8;
+  const target = factor < 1 ? Math.max(lower, current * factor) : Math.min(Math.max(3, current), current * factor);
+  canvas.zoom(target, center); schedulePresentation();
 }
+function syncSize() {
+  if (!imported) return;
+  const before = currentCamera ?? camera();
+  canvas.resized(); applyCamera(before); updateStageScroll(); updateOverlays();
+}
+let observedSize = '';
+new ResizeObserver(() => {
+  const next = `${diagram.clientWidth}/${diagram.clientHeight}`;
+  if (next === observedSize) return;
+  observedSize = next; syncSize();
+}).observe(diagram);
+stageMode.addEventListener('change', () => {
+  readingMode = stageMode.value as 'read' | 'whole';
+  if (!activeStage) return;
+  cameras.delete(activeStage);
+  if (readingMode === 'whole') setView(stageContentBounds(activeStage)); else readFragment(activeStage);
+  document.getElementById('fragment-transitions')!.hidden = readingMode === 'whole' || !document.getElementById('fragment-transitions')!.childElementCount;
+});
+entrySelect.addEventListener('change', () => { if (activeStage) { readingMode = 'read'; stageMode.value = 'read'; readFragment(activeStage); } });
 const registry: any = viewer.get('elementRegistry');
 const details = document.getElementById('details')!;
+const nodeStages = new Map<string, string>(data.model.nodes.map((node: any) => [node.id, node.stage]));
+dimToggle.addEventListener('change', applyStageDimming);
 const nodeById = new Map<string, any>(data.model.nodes.map((node: any) => [node.id, node]));
 const named = new Map<string, any>([...data.model.processes, ...data.model.pools, ...data.model.lanes, ...data.model.nodes, ...(data.model.annotations ?? [])].map((item: any) => [item.id, item]));
 const types: Record<string, string> = { start: 'Начало', end: 'Завершение', task: 'Задача', userTask: 'Действие пользователя', serviceTask: 'Сервисная задача', sendTask: 'Отправка сообщения', receiveTask: 'Получение сообщения', businessRuleTask: 'Бизнес-правило', callActivity: 'Вызов общего процесса', timerCatch: 'Ожидание времени', conditionalStart: 'Начало по условию', terminateEnd: 'Завершение процесса', eventSubProcess: 'Событийный подпроцесс', xor: 'Развилка: один исход', and: 'Параллельные ветви' };
 let selectedId: string | null = null;
+function clearSelection() {
+  if (selectedId) {
+    canvas.removeMarker(selectedId, 'bpmnforge-selected');
+    for (const flow of data.model.flows.filter((item: any) => item.source === selectedId || item.target === selectedId)) {
+      for (const marker of ['bpmnforge-related', 'bpmnforge-incoming', 'bpmnforge-outgoing']) canvas.removeMarker(flow.id, marker);
+    }
+  }
+  selectedId = null; details.hidden = true; document.querySelector('.reader')!.classList.remove('has-details');
+  if (activeStage) { const stage = data.model.stages.find((s: any) => s.id === activeStage); status.textContent = `Этап: ${stage?.name ?? activeStage}`; readingContext.textContent = `Этап: ${stage?.name ?? activeStage}`; }
+  else { status.textContent = 'Вся схема'; readingContext.textContent = 'Вся схема'; }
+}
 function addText(parent: Element, tag: string, value: string, className?: string): Element {
   const element = document.createElement(tag); element.textContent = value;
   if (className) element.className = className;
@@ -144,15 +246,16 @@ function flowName(flow: any): string {
   return [name, flow.originalType === 'message' ? 'информационная связь из исходной схемы' : '', flow.return ? 'Возврат' : ''].filter(Boolean).join(' — ');
 }
 function reveal(id: string) {
-  const box = data.geometry.shapes[id]; if (!box) return;
+  if (!data.geometry.shapes[id]) return; const box = nodeBounds(id);
   const view = canvas.viewbox();
-  if (box.x < view.x + 30 || box.x + box.width > view.x + view.width - 30 || box.y < view.y + 30 || box.y + box.height > view.y + view.height - 30) {
+  const margin = 32 / view.scale;
+  if (box.x < view.x + margin || box.x + box.width > view.x + view.width - margin || box.y < view.y + margin || box.y + box.height > view.y + view.height - margin) {
     canvas.viewbox({ x: box.x + box.width / 2 - view.width / 2, y: box.y + box.height / 2 - view.height / 2, width: view.width, height: view.height });
   }
 }
 function renderFlows(node: any, direction: 'incoming' | 'outgoing') {
   addText(details, 'h3', direction === 'incoming' ? 'Входящие связи' : 'Исходящие связи');
-  const list = document.createElement('div'); list.className = 'neighbors'; details.append(list);
+  const list = document.createElement('div'); list.className = `neighbors ${direction}`; details.append(list);
   const flows = data.model.flows.filter((flow: any) => direction === 'incoming' ? flow.target === node.id : flow.source === node.id);
   if (!flows.length) { addText(list, 'p', 'Нет связей'); return; }
   for (const flow of flows) {
@@ -161,7 +264,7 @@ function renderFlows(node: any, direction: 'incoming' | 'outgoing') {
     const prefix = flowName(flow);
     const label = [prefix, other?.name ?? otherId].filter(Boolean).join(': ');
     if (nodeById.has(otherId)) {
-      const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = `${direction === 'incoming' ? '←' : '→'} ${label}`;
       button.setAttribute('aria-label', `${direction === 'incoming' ? 'Перейти к предыдущему' : 'Перейти к следующему'} блоку: ${label}`);
       button.addEventListener('click', () => selectNode(otherId, true)); row.append(button);
     } else addText(row, 'span', label);
@@ -169,16 +272,17 @@ function renderFlows(node: any, direction: 'incoming' | 'outgoing') {
 }
 function selectNode(id: string, focus = false) {
   const node = nodeById.get(id); if (!node) return;
-  if (selectedId) {
-    canvas.removeMarker(selectedId, 'bpmnforge-selected');
-    for (const flow of data.model.flows.filter((item: any) => item.source === selectedId || item.target === selectedId)) canvas.removeMarker(flow.id, 'bpmnforge-related');
-  }
+  clearSelection();
+  if (activeStage && activeStage !== node.stage) showStage(node.stage, false, false);
   selectedId = id;
-  if (activeStage !== node.stage) showStage(node.stage);
-  reveal(id);
+  details.hidden = false; document.querySelector('.reader')!.classList.add('has-details');
+  syncSize(); reveal(id);
   canvas.addMarker(id, 'bpmnforge-selected');
-  for (const flow of data.model.flows.filter((item: any) => item.source === id || item.target === id)) canvas.addMarker(flow.id, 'bpmnforge-related');
+  for (const flow of data.model.flows.filter((item: any) => item.source === id || item.target === id)) {
+    canvas.addMarker(flow.id, flow.target === id ? 'bpmnforge-incoming' : 'bpmnforge-outgoing');
+  }
   details.replaceChildren();
+  const close = document.createElement('button'); close.type = 'button'; close.id = 'details-close'; close.textContent = '×'; close.setAttribute('aria-label', 'Закрыть описание'); close.addEventListener('click', () => { clearSelection(); diagram.focus(); }); details.append(close);
   addText(details, 'h2', node.name);
   if (node.parent) {
     const parent = nodeById.get(node.parent);
@@ -200,6 +304,7 @@ function selectNode(id: string, focus = false) {
   if (pool) addMeta('Участник', pool.name);
   if (node.lane) addMeta('Исполнитель', named.get(node.lane)?.name ?? node.lane);
   addMeta('Этап', data.model.stages.find((item: any) => item.id === node.stage)?.name ?? node.stage);
+  renderFlows(node, 'incoming'); renderFlows(node, 'outgoing');
   addText(details, 'h3', 'Описание'); addText(details, 'p', node.description || 'Описание не задано');
   if (node.type === 'eventSubProcess') {
     addText(details, 'h3', 'Внутренние шаги');
@@ -208,17 +313,9 @@ function selectNode(id: string, focus = false) {
       button.addEventListener('click', () => selectNode(child.id, true)); details.append(button);
     }
   }
-  renderFlows(node, 'incoming'); renderFlows(node, 'outgoing');
-  if (node.links?.length) {
-    addText(details, 'h3', 'Документы');
-    for (const link of node.links) {
-      const row = document.createElement('p'); details.append(row);
-      if (documentUnavailable(node.id, link.href)) addText(row, 'span', `${link.name} — файл недоступен`, 'document-unavailable');
-      else { const a = document.createElement('a'); a.textContent = link.name; a.href = link.href; a.rel = 'noopener noreferrer'; row.append(a); }
-    }
-  }
   details.scrollTop = 0;
   status.textContent = `Выбран блок: ${node.name}`;
+  readingContext.textContent = `${data.model.stages.find((s: any) => s.id === node.stage)?.name ?? node.stage} · ${named.get(node.lane)?.name ?? pool?.name ?? ''}`;
   if (focus) registry.getGraphics(id)?.focus({ preventScroll: true });
 }
 function wireNodes() {
@@ -241,13 +338,112 @@ function renderBridges() {
     const route: { x: number; y: number }[] = data.geometry.edges[crossing.over];
     const horizontal = route.slice(1).some((point, index) => route[index].y === point.y && point.y === crossing.point.y && Math.min(route[index].x, point.x) < crossing.point.x && crossing.point.x < Math.max(route[index].x, point.x));
     const { x, y } = crossing.point;
-    const mask = document.createElementNS(ns, 'circle'); mask.setAttribute('cx', String(x)); mask.setAttribute('cy', String(y)); mask.setAttribute('r', '7'); mask.setAttribute('fill', '#fff'); mask.setAttribute('class', 'bpmnforge-bridge-mask'); layer.append(mask);
+    const mask = document.createElementNS(ns, 'circle'); mask.setAttribute('cx', String(x)); mask.setAttribute('cy', String(y)); mask.setAttribute('r', '7'); mask.setAttribute('fill', '#fff'); mask.setAttribute('class', 'bpmnforge-bridge-mask'); mask.dataset.flows = crossing.flows.join(' '); layer.append(mask);
     const arc = document.createElementNS(ns, 'path');
     arc.setAttribute('d', horizontal ? `M ${x - 8} ${y} C ${x - 5} ${y - 10}, ${x + 5} ${y - 10}, ${x + 8} ${y}` : `M ${x} ${y - 8} C ${x + 10} ${y - 5}, ${x + 10} ${y + 5}, ${x} ${y + 8}`);
-    arc.setAttribute('fill', 'none'); arc.setAttribute('stroke', '#1c679e'); arc.setAttribute('stroke-width', '2.5'); arc.setAttribute('class', 'bpmnforge-bridge'); layer.append(arc);
+    arc.setAttribute('fill', 'none'); arc.setAttribute('stroke', '#1c679e'); arc.setAttribute('stroke-width', '2.5'); arc.setAttribute('class', 'bpmnforge-bridge'); arc.dataset.flows = crossing.flows.join(' '); layer.append(arc);
   }
   layer.style.pointerEvents = 'none';
 }
+function wrapLabels() {
+  const ns = 'http://www.w3.org/2000/svg';
+  for (const node of data.model.nodes) {
+    if (!['task', 'userTask', 'serviceTask', 'sendTask', 'receiveTask', 'businessRuleTask', 'callActivity'].includes(node.type)) continue;
+    const text = registry.getGraphics(node.id)?.querySelector('.djs-label') as SVGTextElement | null;
+    const box = data.geometry.shapes[node.id];
+    if (!text || !box) continue;
+    const lines = textLines(node.name, box.width - 32, 14);
+    text.replaceChildren(); text.setAttribute('font-family', 'Arial, sans-serif'); text.setAttribute('font-size', '14px'); text.style.fontFamily = 'Arial, sans-serif'; text.style.fontSize = '14px'; text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('transform', '');
+    for (const [index, line] of lines.entries()) {
+      const span = document.createElementNS(ns, 'tspan'); span.setAttribute('x', String(box.width / 2));
+      span.setAttribute('y', String(box.height / 2 - lines.length * 18 / 2 + 14 + index * 18)); span.textContent = line; text.append(span);
+    }
+  }
+  const labels = [...data.model.nodes.map((node: any) => ({ id: node.id, name: node.name })),
+    ...data.model.flows.filter((flow: any) => flow.type !== 'association').map((flow: any) => ({ id: flow.id, name: flow.name ?? flow.condition ?? (data.model.nodes.some((node: any) => node.defaultFlow === flow.id) ? 'Иначе' : '') }))];
+  for (const item of labels) {
+    const box = data.geometry.labels[item.id], graphic = registry.getGraphics(`${item.id}_label`) as SVGElement | undefined;
+    const text = graphic?.querySelector('text') as SVGTextElement | null;
+    if (!box || !graphic || !text || !item.name) continue;
+    // bpmn-js uses its own wrapping widths when importing DI. Restore the bounds
+    // computed by the shared metrics before applying the same deterministic lines.
+    graphic.setAttribute('transform', `translate(${box.x},${box.y})`);
+    const element = registry.get(`${item.id}_label`); Object.assign(element, box);
+    text.replaceChildren(); text.setAttribute('transform', ''); text.setAttribute('text-anchor', 'middle');
+    text.style.fontFamily = 'Arial, sans-serif'; text.style.fontSize = '14px';
+    const lines = textLines(item.name, box.width, 14);
+    for (const [index, line] of lines.entries()) {
+      const span = document.createElementNS(ns, 'tspan'); span.setAttribute('x', String(box.width / 2));
+      span.setAttribute('y', String((box.height - lines.length * 18) / 2 + 14 + index * 18)); span.textContent = line; text.append(span);
+    }
+  }
+
+}
+const associationLabelById = new Map<string, HTMLElement>();
+const laneItems: { element: HTMLElement; box: Box }[] = [];
+function installLaneContext() {
+  const contexts = data.model.pools.flatMap((pool: any) => {
+    const lanes = data.model.lanes.filter((lane: any) => lane.process === pool.process);
+    return lanes.length ? lanes : [pool];
+  });
+  for (const lane of contexts) {
+    const box = data.geometry.shapes[lane.id]; if (!box) continue;
+    const element = document.createElement('div'); element.className = 'lane-name'; element.dataset.lane = lane.id;
+    const poolName = data.model.pools.find((p: any) => p.process === lane.process)?.name;
+    element.textContent = lane.name;
+    element.title = poolName && poolName !== lane.name ? `${poolName} · ${lane.name}` : lane.name;
+    laneContext.append(element); laneItems.push({ element, box });
+  }
+}
+function updateOverlays() {
+  if (!imported) return;
+  const view = canvas.viewbox();
+  if (!associationLabels.hidden) for (const [id, label] of associationLabelById) {
+    const box = data.geometry.labels[id];
+    label.style.transform = `translate(${(box.x - view.x) * view.scale}px, ${(box.y - view.y) * view.scale}px) scale(${view.scale})`;
+  }
+  if (!laneContext.hidden) {
+    const height = diagram.clientHeight;
+    for (const { element, box } of laneItems) {
+      const top = (box.y - view.y) * view.scale, bottom = (box.y + box.height - view.y) * view.scale;
+      element.hidden = bottom < 24 || top > height - 24;
+      if (!element.hidden) element.style.transform = `translateY(${Math.max(6, top + 4)}px)`;
+    }
+  }
+}
+let presentationFrame = 0;
+function schedulePresentation() {
+  if (presentationFrame || !imported) return;
+  presentationFrame = requestAnimationFrame(() => {
+    presentationFrame = 0; updateOverlays(); updateGrid(); updateZoom();
+  });
+}
+const informationToggle = document.getElementById('information-toggle') as HTMLInputElement;
+const informationFlows = data.model.flows.filter((f: any) => f.type === 'association' || f.type === 'message');
+const informationIds = new Set<string>(informationFlows.map((f: any) => f.id));
+document.getElementById('information-count')!.textContent = `Информационные связи (${informationFlows.length})`;
+function toggleInformation() {
+  for (const flow of informationFlows) {
+    const element = registry.getGraphics(flow.id); if (element) element.style.display = informationToggle.checked ? '' : 'none';
+    const label = registry.getGraphics(`${flow.id}_label`); if (label) label.style.display = informationToggle.checked ? '' : 'none';
+  }
+  associationLabels.hidden = !informationToggle.checked;
+  updateOverlays();
+  for (const bridge of diagram.querySelectorAll<SVGElement>('[data-flows]')) bridge.style.display = !informationToggle.checked && bridge.dataset.flows!.split(' ').some(id => informationIds.has(id)) ? 'none' : '';
+}
+informationToggle.addEventListener('change', toggleInformation);
+function installOverlays() {
+  for (const flow of data.model.flows.filter((f: any) => f.type === 'association' && f.name && data.geometry.labels[f.id])) {
+    const label = document.createElement('div'); label.className = 'association-label'; label.dataset.flow = flow.id;
+    label.textContent = textLines(flow.name, data.geometry.labels[flow.id].width, 14).join('\n');
+    const box = data.geometry.labels[flow.id]; label.style.width = `${box.width}px`; label.style.height = `${box.height}px`;
+    associationLabels.append(label); associationLabelById.set(flow.id, label);
+  }
+  installLaneContext();
+  toggleInformation(); updateOverlays();
+}
+eventBus.on('canvas.viewbox.changed', () => { if (imported) { currentCamera = camera(); schedulePresentation(); } });
 let suppressClick = false;
 eventBus.on('element.click', (event: any) => {
   if (suppressClick) return;
@@ -270,10 +466,10 @@ stages.addEventListener('scroll', updateStageScroll);
 window.addEventListener('resize', updateStageScroll);
 requestAnimationFrame(updateStageScroll);
 overview.addEventListener('click', showOverview);
-fit.addEventListener('click', () => activeStage ? showStage(activeStage) : showOverview());
+fit.addEventListener('click', () => activeStage ? showStage(activeStage, true) : showOverview());
 document.getElementById('zoom-in')!.addEventListener('click', () => adjustZoom(1.2));
 document.getElementById('zoom-out')!.addEventListener('click', () => adjustZoom(1 / 1.2));
-eventBus.on('canvas.viewbox.changed', updateZoom);
+
 diagram.addEventListener('wheel', event => {
   event.preventDefault(); const rect = diagram.getBoundingClientRect();
   if (!event.deltaY) return;
@@ -308,28 +504,15 @@ diagram.addEventListener('keydown', event => {
   if (moves[event.key]) canvas.scroll({ dx: moves[event.key][0], dy: moves[event.key][1] });
   else if (event.key === '+' || event.key === '=') adjustZoom(1.2);
   else if (event.key === '-') adjustZoom(1 / 1.2);
-  else if (event.key === '0') activeStage ? showStage(activeStage) : showOverview();
+  else if (event.key === '0') activeStage ? showStage(activeStage, true) : showOverview();
   else return;
   event.preventDefault();
 });
 
 viewer.importXML(data.xml).then(({ warnings }: any) => {
   if (warnings.length) throw new Error('BPMN import warnings');
-  wireNodes(); installGrid(); renderBridges();
+  imported = true; canvas.resized();
+  wireNodes(); wrapLabels(); installGrid(); renderBridges(); installOverlays();
   const firstStage = data.model.stages[0]; if (firstStage) showStage(firstStage.id); else showOverview();
   document.body.dataset.ready = 'true';
 }).catch(() => { document.body.dataset.error = 'true'; status.textContent = 'Не удалось открыть BPMN'; });
-const list = document.getElementById('documents')!;
-const shownLinks = new Set<string>();
-const missingNames: string[] = [];
-for (const item of [data.model, ...data.model.stages, ...data.model.processes, ...data.model.pools, ...data.model.lanes, ...data.model.nodes, ...(data.model.annotations ?? [])]) for (const link of item.links ?? []) {
-  const key = `${link.name}\u0000${link.href}`;
-  if (shownLinks.has(key)) continue;
-  shownLinks.add(key);
-  if (documentUnavailable(item.id, link.href)) { missingNames.push(link.name); continue; }
-  const a = document.createElement('a'); a.textContent = link.name; a.setAttribute('href', link.href); a.rel = 'noopener noreferrer'; list.append(a);
-}
-if (missingNames.length) {
-  const warning = addText(list, 'span', `Недоступные документы: ${missingNames.length}`, 'document-warning');
-  warning.setAttribute('title', missingNames.join('; '));
-}

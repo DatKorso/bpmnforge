@@ -43,7 +43,7 @@ test('tracer: permanent CLI generates matching HTML and BPMN with DI', async () 
       assert.equal(await tab.locator('.djs-shape[data-element-id="Check"]').count(), 1);
     } finally { await browser.close(); }
     assert.equal(cli(['validate', source, '--html', html]).status, 0);
-    assert.equal(cli(['version']).stdout.trim(), '0.1.0');
+    assert.equal(cli(['version']).stdout.trim(), '0.2.0');
     await writeFile(source, '{broken'); await writeFile(html, 'old html'); await writeFile(bpmn, 'old bpmn');
     assert.equal(cli(['build', source, '--html', html, '--bpmn', bpmn]).status, 1);
     assert.equal(await readFile(html, 'utf8'), 'old html'); assert.equal(await readFile(bpmn, 'utf8'), 'old bpmn');

@@ -33,7 +33,7 @@ export async function exportBpmn(model: ProcessDocument, geometry: Geometry): Pr
     const source = refs.get(flow.source), target = refs.get(flow.target);
     const type = flow.type === 'sequence' ? 'SequenceFlow' : flow.type === 'message' ? 'MessageFlow' : 'Association';
     const name = flow.name ?? flow.condition ?? (model.nodes.some(node => node.defaultFlow === flow.id) ? 'Иначе' : undefined);
-    const element = create(`bpmn:${type}`, { id: flow.id, ...(flow.type === 'association' ? {} : { name }), ...(flow.originalType ? { documentation: [create('bpmn:Documentation', { text: `Исходная информационная связь (${flow.originalType}): ${flow.name ?? flow.id}` })] } : {}), sourceRef: source, targetRef: target }); refs.set(flow.id, element);
+    const element = create(`bpmn:${type}`, { id: flow.id, ...(flow.type === 'association' ? {} : { name }), ...(flow.originalType || (flow.type === 'association' && flow.name) ? { documentation: [create('bpmn:Documentation', { text: flow.originalType ? `Исходная информационная связь (${flow.originalType}): ${flow.name ?? flow.id}` : `Информационная связь: ${flow.name}` })] } : {}), sourceRef: source, targetRef: target }); refs.set(flow.id, element);
     if (flow.type === 'message') collaboration.messageFlows.push(element);
     else {
       const ownerId = model.nodes.find(node => node.id === flow.source)?.process ?? model.annotations?.find(node => node.id === flow.source)?.process ?? model.nodes.find(node => node.id === flow.target)?.process;

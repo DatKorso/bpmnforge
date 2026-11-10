@@ -23,10 +23,10 @@ function intersects(points: Point[], box: Bounds): boolean {
 test('route around unrelated shape and label, reject through-shape route hint with IDs and coordinate', () => {
   const model = structuredClone(simple);
   model.flows = [{ id: 'Long', type: 'sequence', source: 'Start', target: 'End' }];
-  const geometry = layoutProcess(model);
+  const geometry = layoutProcess(model, { layout: 'grid' });
   assert.equal(intersects(geometry.edges.Long, geometry.shapes.Check), false);
   model.flows[0].route = [geometry.edges.Long[0], { x: geometry.shapes.Check.x + 20, y: geometry.edges.Long[0].y }, { x: geometry.shapes.Check.x + 20, y: geometry.shapes.End.y + geometry.shapes.End.height / 2 }, geometry.edges.Long.at(-1)!];
-  assert.throws(() => layoutProcess(model), error => error instanceof BpmnForgeError && error.diagnostics.some(d => d.id === 'Long' && d.relatedIds?.includes('Check') && d.point));
+  assert.throws(() => layoutProcess(model, { layout: 'grid' }), error => error instanceof BpmnForgeError && error.diagnostics.some(d => d.id === 'Long' && d.relatedIds?.includes('Check') && d.point));
 });
 
 test('CLI JSON success and failure preserve prior outputs', async () => {

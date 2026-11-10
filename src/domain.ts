@@ -1,3 +1,4 @@
+export type LayoutMode = 'auto' | 'grid' | 'graph';
 export interface Named { id: string; name: string; description?: string; links?: { name: string; href: string }[]; bounds?: Bounds; labelBounds?: Bounds; external?: boolean }
 export interface ProcessNode extends Named {
   type: 'start' | 'end' | 'task' | 'userTask' | 'serviceTask' | 'sendTask' | 'receiveTask' | 'businessRuleTask' | 'callActivity' | 'timerCatch' | 'conditionalStart' | 'terminateEnd' | 'eventSubProcess' | 'xor' | 'and'; process: string; lane?: string; stage: string;

@@ -39,7 +39,7 @@ test('synthetic calls, event subprocess and full licenses work offline at both d
           await page.locator('.license summary').click();
           const check = page.locator('.djs-shape[data-element-id="Check"]');
           await check.focus(); await page.keyboard.press('Enter');
-          assert.match(await page.locator('#details .document-unavailable').innerText(), /файл недоступен/);
+          assert.equal(await page.locator('#details .document-unavailable').count(), 0);
           assert.equal(await page.locator('#details a').count(), 0);
           if (model.id === 'Calls') {
             await page.locator('#details').getByRole('button', { name: /Открыть общий процесс/ }).click();
@@ -83,8 +83,12 @@ test('a long synthetic stage list exposes scroll controls without overlapping th
         await page.waitForFunction(() => document.querySelector('#stages')!.scrollLeft > 100);
         await page.getByRole('button', { name: 'Тестовый этап 14', exact: true }).click();
         assert.equal(await page.getByRole('button', { name: 'Тестовый этап 14', exact: true }).getAttribute('aria-pressed'), 'true');
-        const canvas = (await page.locator('#bpmn-canvas').boundingBox())!, details = (await page.locator('#details').boundingBox())!;
-        assert.ok(canvas.x + canvas.width < details.x && canvas.y + canvas.height <= viewport.height);
+        const canvas = (await page.locator('#bpmn-canvas').boundingBox())!;
+        assert.equal(await page.locator('#details').isVisible(), false, 'empty panel takes no space');
+        const strip=(await page.locator('#lane-context').boundingBox())!;
+        assert.equal(strip.width,180);
+        assert.ok(strip.x+strip.width<=canvas.x+1,'lane names have their own strip');
+        assert.ok(canvas.width > viewport.width - 220 && canvas.y + canvas.height <= viewport.height);
       } finally { await context.close(); }
     }
   } finally { await browser.close(); await rm(dir, { recursive: true, force: true }); }

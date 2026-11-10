@@ -44,12 +44,14 @@ test('shifted tasks keep centered endpoints without moving either block', () => 
   assert.deepEqual(geometry.shapes.B, model.nodes[1].bounds);
 });
 
-test('diagonal tasks connect with one bend and close facing tasks need no stub detour', () => {
+test('diagonal tasks minimize the profile score and close facing tasks need no stub detour', () => {
   for (const target of [{ x: 400, y: 350, width: 180, height: 80 }, { x: 300, y: 100, width: 180, height: 80 }]) {
     const model = modelWith([
       { id: 'A', bounds: { x: 100, y: 100, width: 180, height: 80 } }, { id: 'B', bounds: target }
     ], [link('Across', 'A', 'B')]);
-    assert.equal(layoutProcess(model).edges.Across.length, target.y === 100 ? 2 : 3);
+    const geometry=layoutProcess(model),route=geometry.edges.Across;
+    assert.equal(route.length,target.y===100?2:4);
+    if(target.y!==100){assertCentered(route[0],geometry.shapes.A);assertCentered(route.at(-1)!,geometry.shapes.B);const length=route.slice(1).reduce((sum,p,i)=>sum+Math.abs(p.x-route[i].x)+Math.abs(p.y-route[i].y),0);assert.ok(length+40*(route.length-2)<=460,'two bends save more length than their extra cost of forty');}
   }
 });
 

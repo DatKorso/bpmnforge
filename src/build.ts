@@ -1,12 +1,13 @@
 import { readFile, writeFile, stat, lstat, realpath, rename, rm } from 'node:fs/promises';
 import { resolve, extname, dirname, basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { BpmnForgeError } from './domain.ts';
+import { BpmnForgeError, type LayoutMode } from './domain.ts';
 import { validateProcess } from './validate.ts';
-import { layoutProcess } from './layout.ts';
+import { layoutProcess, selectedLayout } from './layout.ts';
+import { measureReadability } from './readability.ts';
 import { exportBpmn } from './bpmn.ts';
 import { renderStandaloneHtml } from './html.ts';
-export interface BuildOptions { sourcePath: string; htmlPath?: string; bpmnPath?: string }
+export interface BuildOptions { sourcePath: string; htmlPath?: string; bpmnPath?: string; layout?: LayoutMode }
 export function outputPaths(options: BuildOptions) {
   const sourcePath = resolve(options.sourcePath); const extension = extname(sourcePath); const stem = extension ? sourcePath.slice(0, -extension.length) : sourcePath;
   const htmlPath = resolve(options.htmlPath ?? `${stem}.html`), bpmnPath = resolve(options.bpmnPath ?? `${stem}.bpmn`);
@@ -31,14 +32,15 @@ export async function prepareProcess(options: BuildOptions) {
   await checkPaths(paths);
   try { text = await readFile(paths.sourcePath, 'utf8'); } catch { throw new BpmnForgeError(2, 'PATH: cannot read source'); }
   let data: unknown; try { data = JSON.parse(text); } catch { throw new BpmnForgeError(1, 'JSON: invalid source JSON'); }
-  const { model, diagnostics } = await validateProcess(data, paths); const geometry = layoutProcess(model);
+  const { model, diagnostics } = await validateProcess(data, paths); const geometry = layoutProcess(model, { layout: options.layout });
+  const readability = measureReadability(model, geometry, selectedLayout(model, options.layout));
+  diagnostics.push(...readability.diagnostics);
   for (const crossing of geometry.crossings) diagnostics.push({ code: 'ACCEPTED_CROSSING', id: crossing.over, relatedIds: crossing.flows, point: crossing.point, message: `Right-angle crossing of ${crossing.flows.join(' and ')} accepted with a bridge`, severity: 'info' });
-  return { ...paths, model, diagnostics, geometry };
+  return { ...paths, model, diagnostics, geometry, readability };
 }
 export async function buildProcess(options: BuildOptions) {
   const result = await prepareProcess(options); const xml = await exportBpmn(result.model, result.geometry);
-  const unavailableDocuments = result.diagnostics.filter(item => item.code === 'MISSING_DOCUMENT' && item.href).map(item => ({ id: item.id, href: item.href! }));
-  const html = await renderStandaloneHtml(result.model, result.geometry, xml, unavailableDocuments);
+  const html = await renderStandaloneHtml(result.model, result.geometry, xml);
   await publishArtifacts([{ path: result.htmlPath, content: html }, { path: result.bpmnPath, content: xml }]);
   return result;
 }

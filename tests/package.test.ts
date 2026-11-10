@@ -21,7 +21,7 @@ test('real npm install of tgz works in a clean Unicode consumer with independent
     assert.equal(installed.status, 0, installed.stderr);
     const bin = join(project, 'node_modules', '.bin', 'bpmnforge');
     const cli = (args: string[]) => spawnSync(process.execPath, [bin, ...args], { cwd: project, encoding: 'utf8' });
-    assert.equal(cli(['version']).stdout.trim(), '0.1.0');
+    assert.equal(cli(['version']).stdout.trim(), '0.2.0');
     const source = join(project, 'исходный процесс.bpmnforge.json');
     const html = join(project, 'исходный процесс.bpmnforge.html'), bpmn = join(project, 'исходный процесс.bpmnforge.bpmn');
     for (const model of [minimal, calls()]) {

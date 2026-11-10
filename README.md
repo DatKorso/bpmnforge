@@ -1,4 +1,4 @@
-# BPMN Forge 0.1.0
+# BPMN Forge 0.2.0
 
 Генератор автономных BPMN-схем для работы с ИИ-агентами.
 
@@ -8,17 +8,17 @@ BPMN Forge превращает структурированный JSON проц
 
 ## Первый запуск из GitHub
 
-Исходники и [релиз v0.1.0](https://github.com/DatKorso/bpmnforge/releases/tag/v0.1.0) доступны на GitHub. Установка из исходников:
+Исходники и [релиз v0.2.0](https://github.com/DatKorso/bpmnforge/releases/tag/v0.2.0) доступны на GitHub. Установка из исходников:
 
 ```sh
-git clone --branch v0.1.0 --single-branch https://github.com/DatKorso/bpmnforge.git bpmnforge
+git clone --branch v0.2.0 --single-branch https://github.com/DatKorso/bpmnforge.git bpmnforge
 cd bpmnforge
 npm ci
 npm run build
 node bin/bpmnforge.mjs version
 ```
 
-Ожидаемая версия — `0.1.0`. Сохраните следующий полностью вымышленный технический процесс в `process.bpmnforge.json`:
+Ожидаемая версия — `0.2.0`. Сохраните следующий полностью вымышленный технический процесс в `process.bpmnforge.json`:
 
 ```json
 {
@@ -54,14 +54,14 @@ node bin/bpmnforge.mjs build process.bpmnforge.json
 
 ```sh
 cd "/путь/Мой проект"
-curl --fail --location --output bpmnforge-0.1.0.tgz https://github.com/DatKorso/bpmnforge/releases/download/v0.1.0/bpmnforge-0.1.0.tgz
-npm install ./bpmnforge-0.1.0.tgz
+curl --fail --location --output bpmnforge-0.2.0.tgz https://github.com/DatKorso/bpmnforge/releases/download/v0.2.0/bpmnforge-0.2.0.tgz
+npm install ./bpmnforge-0.2.0.tgz
 npx --no-install bpmnforge version
 npx --no-install bpmnforge validate "описание процесса.bpmnforge.json" --json
 npx --no-install bpmnforge build "описание процесса.bpmnforge.json"
 ```
 
-Для локальной сборки архива выполните `npm pack` в клонированном репозитории, затем установите полученный `.tgz` через `npm install "/путь/bpmnforge/bpmnforge-0.1.0.tgz"`. Контрольная сумма опубликованного архива находится в `SHA256SUMS.txt` рядом с ним на странице релиза.
+Для локальной сборки архива выполните `npm pack` в клонированном репозитории, затем установите полученный `.tgz` через `npm install "/путь/bpmnforge/bpmnforge-0.2.0.tgz"`. Контрольная сумма опубликованного архива находится в `SHA256SUMS.txt` рядом с ним на странице релиза.
 
 Скачивание перед установкой совместимо с npm 12, где установка пакета прямо по удалённому URL по умолчанию отключена (`EALLOWREMOTE`).
 
@@ -72,7 +72,7 @@ npx --no-install bpmnforge build "описание процесса.bpmnforge.js
 - [Руководство пользователя](docs/USER-GUIDE.md): CLI, имена файлов, ссылки, навигация, BPMN-профиль и раскладка.
 - [Руководство для LLM](docs/LLM-GUIDE.md): подготовка JSON и цикл исправлений по диагностике.
 - [JSON Schema](schema/bpmnforge.schema.json) — точная структура формата версии 1.
-- [Изменения 0.1.0](CHANGELOG.md) и [порядок выпуска новых версий](docs/RELEASING.md).
+- [Изменения 0.2.0](CHANGELOG.md) и [порядок выпуска новых версий](docs/RELEASING.md).
 
 ```sh
 npm ci
@@ -88,3 +88,9 @@ npm audit
 ## Лицензии
 
 Собственный код BPMN Forge распространяется по [MIT](LICENSE). Лицензии встроенных компонентов продолжают действовать: `assets/THIRD-PARTY-NOTICES.txt` создаётся при сборке, входит в пакет и в HTML под раскрываемым пунктом «Лицензии компонентов viewer». У `bpmn-js` есть отдельное условие о полностью видимом логотипе bpmn.io; оно сохраняется в viewer и уведомлениях. npm также устанавливает лицензии зависимостей CLI вместе с соответствующими пакетами.
+
+### Компоновка и чтение
+
+`validate` и `build` принимают `--layout auto|grid|graph` (по умолчанию `auto`). Без подсказок размещения используется граф; `column`/`row` сохраняют сетку, полные bounds — ручную геометрию. Явный `graph` пересчитывает ячейки в памяти, сохраняя исходный JSON и заданные bounds/route. JSON-ответ включает отдельный отчёт `readability`; рекомендации не меняют успешный код завершения.
+
+Viewer открывает читаемый входной фрагмент, предлагает вид этапа целиком, карту, выбор входа и сохранение камеры этапа. Информационные связи первоначально видны; их переключатель влияет только на HTML. Подробнее о совместимости, диагностике и ограничениях подписей association — в [руководстве](docs/USER-GUIDE.md#раскладка-и-чтение).
